@@ -1,0 +1,134 @@
+version: "3.9"
+
+services:
+  transmission-openvpn:
+    image: haugene/transmission-openvpn:latest
+    container_name: transmission-openvpn
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      - TZ=${TZ}
+
+      - OPENVPN_PROVIDER=NORDVPN
+      - OPENVPN_USERNAME=${NORDVPN_USER}
+      - OPENVPN_PASSWORD=${NORDVPN_PASS}
+      - NORDVPN_COUNTRY=${NORDVPN_COUNTRY}
+      - LOCAL_NETWORK=${LOCAL_NETWORK}
+
+      - TRANSMISSION_UTP_ENABLED=false
+      - TRANSMISSION_DOWNLOAD_DIR=/downloads/complete
+      - TRANSMISSION_INCOMPLETE_DIR=/downloads/incomplete
+
+      - TRANSMISSION_RPC_AUTHENTICATION_REQUIRED=true
+      - TRANSMISSION_RPC_USERNAME=${TRANSMISSION_RPC_USER}
+      - TRANSMISSION_RPC_PASSWORD=${TRANSMISSION_RPC_PASSWORD}
+      - TRANSMISSION_RPC_WHITELIST_ENABLED=false
+    volumes:
+      - /share/Config/transmission:/config
+      - /share/Downloads:/downloads
+    ports:
+      - "9091:9091"
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - /share/Config/sonarr:/config
+      - /share/Media/Series:/tv
+      - /share/Downloads:/downloads
+    ports:
+      - "8989:8989"
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - /share/Config/radarr:/config
+      - /share/Media/Movies:/movies
+      - /share/Downloads:/downloads
+    ports:
+      - "7878:7878"
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - /share/Config/prowlarr:/config
+    ports:
+      - "9696:9696"
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - /share/Config/jellyfin:/config
+      - /share/Media/Series:/data/tvshows
+      - /share/Media/Movies:/data/movies
+    ports:
+      - "8096:8096"
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  updater:
+    image: containrrr/watchtower:latest
+    container_name: updater
+    environment:
+      - TZ=${TZ}
+
+      # Update only containers with the label set to true
+      - WATCHTOWER_LABEL_ENABLE=true
+
+      # Cleanup old images after update
+      - WATCHTOWER_CLEANUP=true
+
+      # Run once per day at 12:00 (cron includes seconds)
+      - WATCHTOWER_SCHEDULE=0 0 12 * * *
+
+      # Notifications via shoutrrr SMTP
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      - WATCHTOWER_NOTIFICATION_URL=smtp://${SMTP_USER}:${SMTP_PASS}@${SMTP_HOST}:${SMTP_PORT}/?fromAddress=${SMTP_FROM}&toAddresses=${SMTP_TO}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
