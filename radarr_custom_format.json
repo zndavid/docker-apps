@@ -1,0 +1,43 @@
+{
+  "name": "Prefer HDR, Allow DV+HDR, Exclude DV-only",
+  "includeCustomFormatWhenRenaming": false,
+  "specifications": [
+    {
+      "name": "Prefer HDR (optional)",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "(?i)\\b(HDR|HDR10(?:\\+|P(?:lus)?)?|HDRPlus|HDR10\\+)\\b"
+      }
+    },
+    {
+      "name": "Exclude DV-only (DV without HDR)",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": true,
+      "required": true,
+      "fields": {
+        "value": "(?i)\\b(DV|DoVi|Dolby[ ._-]?Vision|DolbyVision)\\b(?!.*\\b(HDR|HDR10(?:\\+|P(?:lus)?)?|HDRPlus|HDR10\\+)\\b)"
+      }
+    },
+    {
+      "name": "Not SDR",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": true,
+      "required": true,
+      "fields": {
+        "value": "(?i)\\bSDR\\b"
+      }
+    },
+    {
+      "name": "Not HLG",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": true,
+      "required": true,
+      "fields": {
+        "value": "(?i)\\bHLG\\b"
+      }
+    }
+  ]
+}
+

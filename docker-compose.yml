@@ -1,4 +1,4 @@
-version: "3.9"
+name: media-stack
 
 services:
   transmission-openvpn:
@@ -8,13 +8,22 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun
+    stdin_open: true
+    tty: true
     environment:
       - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
 
       - OPENVPN_PROVIDER=NORDVPN
       - OPENVPN_USERNAME=${NORDVPN_USER}
       - OPENVPN_PASSWORD=${NORDVPN_PASS}
+      - OPENVPN_CONFIG=${OPENVPN_CONFIG_COUNTRIES}
+      - OPENVPN_OPTS=--inactive 3600 --ping 10 --ping-exit 60
+
       - NORDVPN_COUNTRY=${NORDVPN_COUNTRY}
+      - NORDVPN_CATEGORY=legacy_p2p
+
       - LOCAL_NETWORK=${LOCAL_NETWORK}
 
       - TRANSMISSION_UTP_ENABLED=false
@@ -31,12 +40,14 @@ services:
     ports:
       - "9091:9091"
     restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - media-net
 
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
+    stdin_open: true
+    tty: true
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -48,12 +59,14 @@ services:
     ports:
       - "8989:8989"
     restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - media-net
 
   radarr:
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
+    stdin_open: true
+    tty: true
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -65,12 +78,14 @@ services:
     ports:
       - "7878:7878"
     restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - media-net
 
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
+    stdin_open: true
+    tty: true
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -80,12 +95,33 @@ services:
     ports:
       - "9696:9696"
     restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - media-net
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    stdin_open: true
+    tty: true
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - /share/Config/bazarr:/config
+      - /share/Media/Movies:/movies
+      - /share/Media/Series:/tv
+    ports:
+      - "6767:6767"
+    restart: unless-stopped
+    networks:
+      - media-net
 
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
+    stdin_open: true
+    tty: true
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -97,38 +133,66 @@ services:
     ports:
       - "8096:8096"
     restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - media-net
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    stdin_open: true
+    tty: true
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - /share/Config/jellyseerr:/app/config
+    ports:
+      - "5055:5055"
+    restart: unless-stopped
+    networks:
+      - media-net
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
-    command: tunnel run
+    command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    stdin_open: true
+    tty: true
     restart: unless-stopped
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - media-net
 
-  updater:
+  watchtower:
     image: containrrr/watchtower:latest
-    container_name: updater
+    container_name: watchtower
+    stdin_open: true
+    tty: true
     environment:
       - TZ=${TZ}
-
-      # Update only containers with the label set to true
-      - WATCHTOWER_LABEL_ENABLE=true
-
-      # Cleanup old images after update
       - WATCHTOWER_CLEANUP=true
-
-      # Run once per day at 12:00 (cron includes seconds)
       - WATCHTOWER_SCHEDULE=0 0 12 * * *
-
-      # Notifications via shoutrrr SMTP
       - WATCHTOWER_NOTIFICATIONS=shoutrrr
-      - WATCHTOWER_NOTIFICATION_URL=smtp://${SMTP_USER}:${SMTP_PASS}@${SMTP_HOST}:${SMTP_PORT}/?fromAddress=${SMTP_FROM}&toAddresses=${SMTP_TO}
+      - WATCHTOWER_NOTIFICATION_URL=telegram://${TELEGRAM_BOT_TOKEN}@telegram?chats=${TELEGRAM_CHAT_ID}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
+    networks:
+      - media-net
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    network_mode: host
+    privileged: true
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - /share/Config/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+
+networks:
+  media-net:
+    driver: bridge
 
