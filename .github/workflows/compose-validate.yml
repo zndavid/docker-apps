@@ -1,17 +1,41 @@
 name: Compose Validation
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
+    paths:
+      - docker-compose.yml
+      - .env.example
+      - .github/workflows/compose-validate.yml
+  push:
+    branches:
+      - main
+    paths:
+      - docker-compose.yml
+      - .env.example
+      - .github/workflows/compose-validate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate-compose:
+    name: Validate compose config
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Show Docker and Compose versions
+        run: |
+          docker --version
+          docker compose version
 
       - name: Prepare environment file
         run: cp .env.example .env
