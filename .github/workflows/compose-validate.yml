@@ -5,25 +5,34 @@ on:
     paths:
       - docker-compose.yml
       - .env.example
-      - scripts/validate-compose.sh
-      - Makefile
       - .github/workflows/compose-validate.yml
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - docker-compose.yml
       - .env.example
-      - scripts/validate-compose.sh
-      - Makefile
       - .github/workflows/compose-validate.yml
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: compose-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
+  validate-compose:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+
     steps:
-      - uses: actions/checkout@v4
-      - run: make validate
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare environment file
+        run: cp .env.example .env
+
+      - name: Validate docker-compose config
+        run: docker compose -f docker-compose.yml config >/dev/null
