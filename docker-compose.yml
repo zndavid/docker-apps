@@ -1,184 +1,169 @@
 name: media-stack
 
+x-common-env: &common-env
+  TZ: ${TZ}
+  PUID: ${PUID}
+  PGID: ${PGID}
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks:
+    - media-net
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
 services:
   transmission-openvpn:
+    <<: *service-defaults
     image: haugene/transmission-openvpn:latest
     container_name: transmission-openvpn
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun
-    stdin_open: true
-    tty: true
     environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
-
-      - OPENVPN_PROVIDER=NORDVPN
-      - OPENVPN_USERNAME=${NORDVPN_USER}
-      - OPENVPN_PASSWORD=${NORDVPN_PASS}
-      - OPENVPN_CONFIG=${OPENVPN_CONFIG_COUNTRIES}
-      - OPENVPN_OPTS=--inactive 3600 --ping 10 --ping-exit 60
-
-      - NORDVPN_COUNTRY=${NORDVPN_COUNTRY}
-      - NORDVPN_CATEGORY=legacy_p2p
-
-      - LOCAL_NETWORK=${LOCAL_NETWORK}
-
-      - TRANSMISSION_UTP_ENABLED=false
-      - TRANSMISSION_DOWNLOAD_DIR=/downloads/complete
-      - TRANSMISSION_INCOMPLETE_DIR=/downloads/incomplete
-
-      - TRANSMISSION_RPC_AUTHENTICATION_REQUIRED=true
-      - TRANSMISSION_RPC_USERNAME=${TRANSMISSION_RPC_USER}
-      - TRANSMISSION_RPC_PASSWORD=${TRANSMISSION_RPC_PASSWORD}
-      - TRANSMISSION_RPC_WHITELIST_ENABLED=false
+      <<: *common-env
+      OPENVPN_PROVIDER: NORDVPN
+      OPENVPN_USERNAME: ${NORDVPN_USER}
+      OPENVPN_PASSWORD: ${NORDVPN_PASS}
+      OPENVPN_CONFIG: ${OPENVPN_CONFIG_COUNTRIES}
+      OPENVPN_OPTS: --inactive 3600 --ping 10 --ping-exit 60
+      NORDVPN_COUNTRY: ${NORDVPN_COUNTRY}
+      NORDVPN_CATEGORY: legacy_p2p
+      LOCAL_NETWORK: ${LOCAL_NETWORK}
+      TRANSMISSION_UTP_ENABLED: "false"
+      TRANSMISSION_DOWNLOAD_DIR: /downloads/complete
+      TRANSMISSION_INCOMPLETE_DIR: /downloads/incomplete
+      TRANSMISSION_RPC_AUTHENTICATION_REQUIRED: "true"
+      TRANSMISSION_RPC_USERNAME: ${TRANSMISSION_RPC_USER}
+      TRANSMISSION_RPC_PASSWORD: ${TRANSMISSION_RPC_PASSWORD}
+      TRANSMISSION_RPC_WHITELIST_ENABLED: "false"
     volumes:
       - /share/Config/transmission:/config
       - /share/Downloads:/downloads
     ports:
       - "9091:9091"
-    restart: unless-stopped
-    networks:
-      - media-net
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9091/transmission/web/ >/dev/null || exit 1"]
+      start_period: 60s
 
   sonarr:
+    <<: *service-defaults
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
-    stdin_open: true
-    tty: true
-    environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
+    environment: *common-env
     volumes:
       - /share/Config/sonarr:/config
       - /share/Media/Series:/tv
       - /share/Downloads:/downloads
     ports:
       - "8989:8989"
-    restart: unless-stopped
-    networks:
-      - media-net
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8989/ping >/dev/null || exit 1"]
+      start_period: 45s
 
   radarr:
+    <<: *service-defaults
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
-    stdin_open: true
-    tty: true
-    environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
+    environment: *common-env
     volumes:
       - /share/Config/radarr:/config
       - /share/Media/Movies:/movies
       - /share/Downloads:/downloads
     ports:
       - "7878:7878"
-    restart: unless-stopped
-    networks:
-      - media-net
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:7878/ping >/dev/null || exit 1"]
+      start_period: 45s
 
   prowlarr:
+    <<: *service-defaults
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
-    stdin_open: true
-    tty: true
-    environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
+    environment: *common-env
     volumes:
       - /share/Config/prowlarr:/config
     ports:
       - "9696:9696"
-    restart: unless-stopped
-    networks:
-      - media-net
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9696/ping >/dev/null || exit 1"]
+      start_period: 45s
 
   bazarr:
+    <<: *service-defaults
     image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
-    stdin_open: true
-    tty: true
-    environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
+    environment: *common-env
     volumes:
       - /share/Config/bazarr:/config
       - /share/Media/Movies:/movies
       - /share/Media/Series:/tv
     ports:
       - "6767:6767"
-    restart: unless-stopped
-    networks:
-      - media-net
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:6767 >/dev/null || exit 1"]
+      start_period: 45s
 
   jellyfin:
+    <<: *service-defaults
     image: lscr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
-    stdin_open: true
-    tty: true
-    environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
+    environment: *common-env
     volumes:
       - /share/Config/jellyfin:/config
       - /share/Media/Series:/data/tvshows
       - /share/Media/Movies:/data/movies
     ports:
       - "8096:8096"
-    restart: unless-stopped
-    networks:
-      - media-net
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8096/ >/dev/null || exit 1"]
+      start_period: 60s
 
   jellyseerr:
+    <<: *service-defaults
     image: fallenbagel/jellyseerr:latest
     container_name: jellyseerr
-    stdin_open: true
-    tty: true
     environment:
-      - TZ=${TZ}
+      TZ: ${TZ}
     volumes:
       - /share/Config/jellyseerr:/app/config
     ports:
       - "5055:5055"
-    restart: unless-stopped
-    networks:
-      - media-net
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5055/api/v1/status >/dev/null || exit 1"]
+      start_period: 45s
 
   cloudflared:
+    <<: *service-defaults
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
     command: tunnel --no-autoupdate run
     environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
-    networks:
-      - media-net
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
 
   watchtower:
+    <<: *service-defaults
     image: containrrr/watchtower:latest
     container_name: watchtower
-    stdin_open: true
-    tty: true
     environment:
-      - TZ=${TZ}
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_SCHEDULE=0 0 12 * * *
-      - WATCHTOWER_NOTIFICATIONS=shoutrrr
-      - WATCHTOWER_NOTIFICATION_URL=telegram://${TELEGRAM_BOT_TOKEN}@telegram?chats=${TELEGRAM_CHAT_ID}
+      TZ: ${TZ}
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_SCHEDULE: 0 0 12 * * *
+      WATCHTOWER_NOTIFICATIONS: shoutrrr
+      WATCHTOWER_NOTIFICATION_URL: telegram://${TELEGRAM_BOT_TOKEN}@telegram?chats=${TELEGRAM_CHAT_ID}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
-    networks:
-      - media-net
 
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
@@ -186,7 +171,7 @@ services:
     network_mode: host
     privileged: true
     environment:
-      - TZ=${TZ}
+      TZ: ${TZ}
     volumes:
       - /share/Config/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
@@ -195,4 +180,3 @@ services:
 networks:
   media-net:
     driver: bridge
-
