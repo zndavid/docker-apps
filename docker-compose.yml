@@ -6,11 +6,14 @@ x-common-env: &common-env
   PGID: ${PGID}
 
 x-service-defaults: &service-defaults
-  stdin_open: true
-  tty: true
   restart: unless-stopped
   networks:
     - media-net
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 5
 
 services:
   transmission-openvpn:
@@ -43,6 +46,10 @@ services:
       - /share/Downloads:/downloads
     ports:
       - "9091:9091"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9091/transmission/web/ >/dev/null || exit 1"]
+      start_period: 60s
 
   sonarr:
     <<: *service-defaults
@@ -55,6 +62,10 @@ services:
       - /share/Downloads:/downloads
     ports:
       - "8989:8989"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8989/ping >/dev/null || exit 1"]
+      start_period: 45s
 
   radarr:
     <<: *service-defaults
@@ -67,6 +78,10 @@ services:
       - /share/Downloads:/downloads
     ports:
       - "7878:7878"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:7878/ping >/dev/null || exit 1"]
+      start_period: 45s
 
   prowlarr:
     <<: *service-defaults
@@ -77,6 +92,10 @@ services:
       - /share/Config/prowlarr:/config
     ports:
       - "9696:9696"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9696/ping >/dev/null || exit 1"]
+      start_period: 45s
 
   bazarr:
     <<: *service-defaults
@@ -89,6 +108,10 @@ services:
       - /share/Media/Series:/tv
     ports:
       - "6767:6767"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:6767 >/dev/null || exit 1"]
+      start_period: 45s
 
   jellyfin:
     <<: *service-defaults
@@ -101,6 +124,10 @@ services:
       - /share/Media/Movies:/data/movies
     ports:
       - "8096:8096"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8096/ >/dev/null || exit 1"]
+      start_period: 60s
 
   jellyseerr:
     <<: *service-defaults
@@ -112,6 +139,10 @@ services:
       - /share/Config/jellyseerr:/app/config
     ports:
       - "5055:5055"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5055/api/v1/status >/dev/null || exit 1"]
+      start_period: 45s
 
   cloudflared:
     <<: *service-defaults
