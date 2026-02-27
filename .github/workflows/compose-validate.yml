@@ -1,0 +1,29 @@
+name: Compose Validation
+
+on:
+  pull_request:
+    paths:
+      - docker-compose.yml
+      - .env.example
+      - scripts/validate-compose.sh
+      - Makefile
+      - .github/workflows/compose-validate.yml
+  push:
+    branches: [main]
+    paths:
+      - docker-compose.yml
+      - .env.example
+      - scripts/validate-compose.sh
+      - Makefile
+      - .github/workflows/compose-validate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: make validate
