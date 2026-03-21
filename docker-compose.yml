@@ -6,11 +6,17 @@ x-common-env: &common-env
   PGID: ${PGID}
 
 x-service-defaults: &service-defaults
-  stdin_open: true
-  tty: true
   restart: unless-stopped
   networks:
     - media-net
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp
+    - /run
+  stop_grace_period: 30s
 
 services:
   transmission-openvpn:
@@ -43,30 +49,66 @@ services:
       - /share/Downloads:/downloads
     ports:
       - "9091:9091"
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   sonarr:
     <<: *service-defaults
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
     environment: *common-env
+    depends_on:
+      prowlarr:
+        condition: service_healthy
+      transmission-openvpn:
+        condition: service_healthy
     volumes:
       - /share/Config/sonarr:/config
       - /share/Media/Series:/tv
       - /share/Downloads:/downloads
     ports:
-      - "8989:8989"
+      - "127.0.0.1:8989:8989"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8989/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
 
   radarr:
     <<: *service-defaults
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
     environment: *common-env
+    depends_on:
+      prowlarr:
+        condition: service_healthy
+      transmission-openvpn:
+        condition: service_healthy
     volumes:
       - /share/Config/radarr:/config
       - /share/Media/Movies:/movies
       - /share/Downloads:/downloads
     ports:
-      - "7878:7878"
+      - "127.0.0.1:7878:7878"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
 
   prowlarr:
     <<: *service-defaults
@@ -76,19 +118,38 @@ services:
     volumes:
       - /share/Config/prowlarr:/config
     ports:
-      - "9696:9696"
+      - "127.0.0.1:9696:9696"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9696/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
 
   bazarr:
     <<: *service-defaults
     image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
     environment: *common-env
+    depends_on:
+      sonarr:
+        condition: service_healthy
+      radarr:
+        condition: service_healthy
     volumes:
       - /share/Config/bazarr:/config
       - /share/Media/Movies:/movies
       - /share/Media/Series:/tv
     ports:
-      - "6767:6767"
+      - "127.0.0.1:6767:6767"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6767/api/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
 
   jellyfin:
     <<: *service-defaults
@@ -97,10 +158,17 @@ services:
     environment: *common-env
     volumes:
       - /share/Config/jellyfin:/config
-      - /share/Media/Series:/data/tvshows
-      - /share/Media/Movies:/data/movies
+      - /share/Media/Series:/data/tvshows:ro
+      - /share/Media/Movies:/data/movies:ro
     ports:
       - "8096:8096"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
 
   jellyseerr:
     <<: *service-defaults
@@ -108,10 +176,20 @@ services:
     container_name: jellyseerr
     environment:
       TZ: ${TZ}
+    depends_on:
+      jellyfin:
+        condition: service_healthy
     volumes:
       - /share/Config/jellyseerr:/app/config
     ports:
       - "5055:5055"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5055/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
 
   cloudflared:
     <<: *service-defaults
@@ -120,6 +198,8 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    read_only: true
+    logging: *default-logging
 
   watchtower:
     <<: *service-defaults
@@ -132,19 +212,25 @@ services:
       WATCHTOWER_NOTIFICATIONS: shoutrrr
       WATCHTOWER_NOTIFICATION_URL: telegram://${TELEGRAM_BOT_TOKEN}@telegram?chats=${TELEGRAM_CHAT_ID}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    logging: *default-logging
 
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant
     network_mode: host
-    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     environment:
       TZ: ${TZ}
     volumes:
       - /share/Config/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
 
 networks:
   media-net:
