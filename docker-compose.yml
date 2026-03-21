@@ -170,17 +170,18 @@ services:
       start_period: 30s
     logging: *default-logging
 
-  jellyseerr:
+  seerr:
     <<: *service-defaults
-    image: fallenbagel/jellyseerr:latest
-    container_name: jellyseerr
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    container_name: seerr
     environment:
       TZ: ${TZ}
     depends_on:
       jellyfin:
         condition: service_healthy
     volumes:
-      - /share/Config/jellyseerr:/app/config
+      - /share/Config/seerr:/app/config
     ports:
       - "5055:5055"
     healthcheck:

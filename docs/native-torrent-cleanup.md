@@ -15,6 +15,7 @@ Default behavior:
 - Transmission ratio limit: disabled
 - Sonarr `removeCompletedDownloads`: enabled
 - Radarr `removeCompletedDownloads`: enabled
+- Telegram success notification: sent if `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are present
 
 Run it from the stack directory on the target host:
 

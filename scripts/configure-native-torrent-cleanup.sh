@@ -12,6 +12,7 @@ SONARR_DOWNLOAD_CLIENT_ID=${SONARR_DOWNLOAD_CLIENT_ID:-1}
 RADARR_DOWNLOAD_CLIENT_ID=${RADARR_DOWNLOAD_CLIENT_ID:-1}
 SONARR_CONFIG_PATH=${SONARR_CONFIG_PATH:-/share/Config/sonarr/config.xml}
 RADARR_CONFIG_PATH=${RADARR_CONFIG_PATH:-/share/Config/radarr/config.xml}
+TELEGRAM_API_URL=${TELEGRAM_API_URL:-https://api.telegram.org}
 
 TRANSMISSION_SESSION_ID=""
 
@@ -60,6 +61,29 @@ read_arr_api_key() {
   [ -f "$config_path" ] || fail "Missing config file: $config_path"
 
   sed -n 's:.*<ApiKey>\(.*\)</ApiKey>.*:\1:p' "$config_path" | head -n 1
+}
+
+send_telegram_notification() {
+  local message=$1
+  local telegram_bot_token
+  local telegram_chat_id
+
+  telegram_bot_token=$(get_setting TELEGRAM_BOT_TOKEN || true)
+  telegram_chat_id=$(get_setting TELEGRAM_CHAT_ID || true)
+
+  if [ -z "$telegram_bot_token" ] || [ -z "$telegram_chat_id" ]; then
+    log "Telegram: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing, skipping notification"
+    return 0
+  fi
+
+  curl -fsS \
+    --request POST \
+    --data-urlencode "chat_id=$telegram_chat_id" \
+    --data-urlencode "text=$message" \
+    --data-urlencode "disable_web_page_preview=true" \
+    "$TELEGRAM_API_URL/bot$telegram_bot_token/sendMessage" >/dev/null
+
+  log "Telegram: success notification sent"
 }
 
 api_get() {
@@ -207,6 +231,7 @@ main() {
   update_remove_completed_downloads "Sonarr" "$SONARR_API_URL" "$SONARR_API_KEY" "$SONARR_DOWNLOAD_CLIENT_ID"
   update_remove_completed_downloads "Radarr" "$RADARR_API_URL" "$RADARR_API_KEY" "$RADARR_DOWNLOAD_CLIENT_ID"
 
+  send_telegram_notification "Native torrent cleanup configured successfully on $(hostname) at $(date '+%Y-%m-%d %H:%M:%S %Z')."
   log "Native torrent cleanup is configured."
 }
 
