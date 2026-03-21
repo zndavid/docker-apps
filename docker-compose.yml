@@ -62,6 +62,58 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    profiles: ["vpn-qbit"]
+    restart: unless-stopped
+    networks:
+      - media-net
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${TZ}
+      VPN_SERVICE_PROVIDER: nordvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${GLUETUN_WIREGUARD_PRIVATE_KEY:-}
+      WIREGUARD_ADDRESSES: ${GLUETUN_WIREGUARD_ADDRESSES:-}
+      SERVER_COUNTRIES: ${GLUETUN_SERVER_COUNTRIES:-AT}
+      FIREWALL_OUTBOUND_SUBNETS: ${LOCAL_NETWORK}
+      FIREWALL_INPUT_PORTS: 8080,${QBITTORRENT_TORRENTING_PORT:-6881}
+      FIREWALL_VPN_INPUT_PORTS: ${QBITTORRENT_TORRENTING_PORT:-6881}
+    volumes:
+      - /share/Config/gluetun:/gluetun
+    ports:
+      - "127.0.0.1:${QBITTORRENT_WEBUI_PORT:-18080}:8080"
+      - "${QBITTORRENT_TORRENTING_PORT:-6881}:${QBITTORRENT_TORRENTING_PORT:-6881}"
+      - "${QBITTORRENT_TORRENTING_PORT:-6881}:${QBITTORRENT_TORRENTING_PORT:-6881}/udp"
+    logging: *default-logging
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    profiles: ["vpn-qbit"]
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      WEBUI_PORT: 8080
+      TORRENTING_PORT: ${QBITTORRENT_TORRENTING_PORT:-6881}
+    volumes:
+      - /share/Config/qbittorrent:/config
+      - /share/Downloads:/downloads
+    logging: *default-logging
+
   sonarr:
     <<: *service-defaults
     image: lscr.io/linuxserver/sonarr:latest
