@@ -5,6 +5,15 @@ x-common-env: &common-env
   PUID: ${PUID}
   PGID: ${PGID}
 
+x-watchtower-labels: &watchtower-labels
+  com.centurylinklabs.watchtower.enable: "true"
+
+x-autoheal-labels: &autoheal-labels
+  autoheal: "true"
+
+x-managed-service-labels: &managed-service-labels
+  <<: [*watchtower-labels, *autoheal-labels]
+
 x-service-defaults: &service-defaults
   restart: unless-stopped
   networks:
@@ -17,6 +26,7 @@ x-service-defaults: &service-defaults
     - /tmp
     - /run
   stop_grace_period: 30s
+  labels: *managed-service-labels
 
 services:
   transmission-openvpn:
@@ -75,6 +85,7 @@ services:
       - /dev/net/tun:/dev/net/tun
     security_opt:
       - no-new-privileges:true
+    labels: *managed-service-labels
     environment:
       TZ: ${TZ}
       VPN_SERVICE_PROVIDER: nordvpn
@@ -93,6 +104,12 @@ services:
       - "127.0.0.1:${QBITTORRENT_WEBUI_PORT:-18080}:8080"
       - "${QBITTORRENT_TORRENTING_PORT:-6881}:${QBITTORRENT_TORRENTING_PORT:-6881}"
       - "${QBITTORRENT_TORRENTING_PORT:-6881}:${QBITTORRENT_TORRENTING_PORT:-6881}/udp"
+    healthcheck:
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     logging: *default-logging
 
   qbittorrent:
@@ -102,9 +119,11 @@ services:
     restart: unless-stopped
     network_mode: "service:gluetun"
     depends_on:
-      - gluetun
+      gluetun:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
+    labels: *watchtower-labels
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
@@ -114,6 +133,12 @@ services:
     volumes:
       - /share/Config/qbittorrent:/config
       - /share/Downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     logging: *default-logging
 
   sonarr:
@@ -263,11 +288,38 @@ services:
     environment:
       TZ: ${TZ}
       WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_ROLLING_RESTART: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      WATCHTOWER_REVIVE_STOPPED: "true"
+      WATCHTOWER_TIMEOUT: 60s
       WATCHTOWER_SCHEDULE: 0 0 12 * * *
       WATCHTOWER_NOTIFICATIONS: shoutrrr
       WATCHTOWER_NOTIFICATION_URL: telegram://${TELEGRAM_BOT_TOKEN}@telegram?chats=${TELEGRAM_CHAT_ID}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    logging: *default-logging
+
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: autoheal
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 60
+      AUTOHEAL_START_PERIOD: 300
+      AUTOHEAL_DEFAULT_STOP_TIMEOUT: 60
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - media-net
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     logging: *default-logging
 
   homeassistant:
@@ -285,6 +337,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    labels: *watchtower-labels
     logging: *default-logging
 
 networks:
