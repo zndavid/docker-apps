@@ -1,64 +1,88 @@
 # Container update policy
 
-This stack intentionally does not apply unattended container updates.
+This stack uses **What's up Docker (WUD)** for controlled automatic updates.
 
-## Why
+## Schedule
 
-Automatic replacement of running containers can turn an upstream image regression into an immediate outage. This is especially undesirable for Home Assistant, VPN networking and the media download path.
+WUD checks for new container images once per week:
 
-The stack therefore uses **Diun** to inspect the images used by running Docker containers and send Telegram notifications when a tracked image changes. Diun does not replace or restart the application containers.
+- Sunday
+- 12:00 local time
+- `Europe/Vienna`
+- with up to about one minute of jitter
 
-LinuxServer.io explicitly recommends Diun for image-update notifications and does not recommend unattended automatic container updates.
+The watcher cron is:
 
-## Normal update workflow
-
-After receiving a notification, review the affected service and update deliberately:
-
-```bash
-docker compose pull
-docker compose up -d
-docker compose ps
+```text
+0 12 * * 0
 ```
 
-For the optional qBittorrent + Gluetun profile:
+Startup checks and Docker-event-triggered scans are disabled deliberately. This prevents a NAS/container restart in the evening or at night from causing an unscheduled automatic update.
 
-```bash
-docker compose --profile vpn-qbit pull
-docker compose --profile vpn-qbit up -d
-docker compose --profile vpn-qbit ps
-```
+## What WUD does
 
-Inspect service logs after important updates, especially for:
+When WUD finds an eligible update during the Sunday scan, its Docker trigger automatically:
 
-- `homeassistant`
-- `gluetun`
-- `qbittorrent`
-- `transmission-openvpn`
-- `jellyfin`
+1. pulls the new image,
+2. stops the existing container,
+3. recreates it with the existing Docker configuration,
+4. starts it again if it was previously running,
+5. removes the previous image after a successful replacement.
 
-## Diun behavior
-
-Diun runs scheduled checks once per day at 12:00 local time with up to 10 minutes of jitter. With `TZ=Europe/Vienna`, the normal scheduled check window is therefore approximately 12:00-12:10 Austrian local time.
-
-Diun's default startup check remains enabled, so it also checks once when the container starts.
-
-Docker discovery uses `watchByDefault=true`, so running containers are checked without having to label every service individually.
-
-Telegram notifications use:
+A Telegram trigger is configured in parallel using:
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 
-The first analysis of an image does not send notifications because `firstCheckNotif=false`.
+The WUD Web UI is available on the host loopback interface at `WUD_WEBUI_PORT` (default `13000`).
 
-## Why Diun instead of Watchtower
+## Update scope
 
-Watchtower performed unattended updates. This stack deliberately separates **detection** from **deployment** so an upstream regression does not automatically replace a working Home Assistant, VPN, media server or download client.
+Most running services are watched and automatically updated on the weekly schedule.
+
+WUD itself is excluded from self-updates and should be upgraded deliberately.
+
+### Gluetun + qBittorrent exception
+
+The optional `gluetun` and `qbittorrent` containers are watched, but excluded from the automatic Docker trigger.
+
+qBittorrent uses:
+
+```text
+network_mode: service:gluetun
+```
+
+so the two containers share one network namespace. Recreating Gluetun independently could leave a running qBittorrent container attached to the old namespace. For that reason WUD may notify about updates for these two containers, but they should currently be upgraded together:
+
+```bash
+docker compose --profile vpn-qbit pull gluetun qbittorrent
+docker compose --profile vpn-qbit up -d gluetun qbittorrent
+```
+
+Transmission remains the primary download path while this optional stack is being tested.
+
+## Registry choice
+
+LinuxServer images use their official public GitHub Container Registry references:
+
+```text
+ghcr.io/linuxserver/...
+```
+
+WUD requires GitHub credentials for its LSCR registry integration, while public GHCR images can be checked without configuring a token. Using GHCR therefore keeps the updater simpler and avoids storing an additional GitHub Personal Access Token on the NAS.
 
 ## Docker socket note
 
-Diun reads Docker metadata through `/var/run/docker.sock`. The mount is marked read-only at the filesystem level, but Docker daemon access is still security-sensitive. Run this stack only on a trusted host and do not expose the Docker socket over the network.
+WUD must have write-capable access to `/var/run/docker.sock` because automatic container replacement requires Docker API mutations. Treat the WUD container as highly privileged infrastructure and do not expose the Docker socket over the network.
 
-## Rollback preparation
+## Manual update / recovery
 
-Before a major application update, back up the corresponding `/share/Config/<service>` directory. For particularly sensitive services, consider pinning a known-good image tag before upgrading and record the previous tag so it can be restored quickly.
+A full manual refresh can still be performed from the stack directory:
+
+```bash
+docker compose pull
+docker compose up -d --remove-orphans
+docker compose ps
+```
+
+Before major application changes, keep backups of the corresponding `/share/Config/<service>` directories. If an upstream release causes a regression, pin or restore the previous known-good image and recreate the affected service.
