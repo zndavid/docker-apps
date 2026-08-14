@@ -51,9 +51,8 @@ read_env_file_value() {
 
 get_setting() {
   local key=$1
-  local env_value
+  local env_value=${!key:-}
 
-  eval "env_value=\${$key:-}"
   if [ -n "$env_value" ]; then
     printf '%s' "$env_value"
     return 0
