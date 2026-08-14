@@ -8,6 +8,8 @@ Gluetun is kept separate from qBittorrent so VPN transport, firewalling and appl
 
 Gluetun supports NordVPN directly with both OpenVPN and WireGuard. OpenVPN is the recommended first setup here because it reuses the same NordVPN service credentials already used by Transmission.
 
+All-in-one VPN/qBittorrent images were considered as well. The separate Gluetun model is kept because NordVPN is a native provider, VPN lifecycle/firewalling stay independent from qBittorrent, and the torrent client can be replaced without changing the VPN layer.
+
 ## Configuration
 
 Fill these values in `.env`:
@@ -27,6 +29,8 @@ GLUETUN_WIREGUARD_PRIVATE_KEY=your_real_nordvpn_wireguard_private_key
 ```
 
 NordVPN's native Gluetun integration requires the WireGuard private key; a separate `WIREGUARD_ADDRESSES` value is not required for this provider.
+
+The Compose file also sets `UPDATER_PERIOD=480h`, which lets Gluetun periodically refresh its internal VPN server list without checking excessively often.
 
 ## Start the optional stack
 
@@ -58,6 +62,8 @@ Because Gluetun is attached to `media-net`, containers on that network can reach
 Host: gluetun
 Port: 8080
 ```
+
+No Docker host-port publication is needed for this container-to-container path.
 
 Keep Transmission configured until the qBittorrent path has been tested successfully. This lets both clients coexist without changing the current production download path.
 
