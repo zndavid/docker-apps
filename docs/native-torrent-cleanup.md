@@ -7,7 +7,7 @@ The stack can do the same job natively:
 1. Transmission stops seeding once the global idle seeding limit is reached.
 2. Sonarr and Radarr remove imported torrents after Transmission reports them as stopped and complete.
 
-This repository now tracks that migration with [`scripts/configure-native-torrent-cleanup.sh`](/home/david/work/docker-apps/scripts/configure-native-torrent-cleanup.sh).
+This repository configures that behavior with [`configure-native-torrent-cleanup.sh`](../scripts/configure-native-torrent-cleanup.sh).
 
 Default behavior:
 
@@ -17,7 +17,7 @@ Default behavior:
 - Radarr `removeCompletedDownloads`: enabled
 - Telegram success notification: sent if `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are present
 
-Run it from the stack directory on the target host:
+Run it from the repository root on the target host:
 
 ```bash
 ./scripts/configure-native-torrent-cleanup.sh
@@ -25,6 +25,8 @@ Run it from the stack directory on the target host:
 
 Notes:
 
-- The script reads `TRANSMISSION_RPC_USER` and `TRANSMISSION_RPC_PASSWORD` from the repo `.env` file by default.
+- The script reads `TRANSMISSION_RPC_USER`, `TRANSMISSION_RPC_PASSWORD` and `TORRENT_IDLE_SEEDING_LIMIT_MINUTES` from the repository `.env` by default.
+- `.env.example` keeps comments on separate lines. The helper remains compatible with older files that have whitespace-separated inline comments, while preserving literal `#` characters inside passwords and tokens.
 - Sonarr and Radarr API keys are read from their `config.xml` files by default.
-- If your setup uses different paths or client IDs, override them with environment variables before running the script.
+- The default Transmission download-client ID is `1` in both Arr applications. Override `SONARR_DOWNLOAD_CLIENT_ID` and `RADARR_DOWNLOAD_CLIENT_ID` if your installation uses different IDs.
+- If your setup uses different paths or API endpoints, override the corresponding environment variables before running the script.
