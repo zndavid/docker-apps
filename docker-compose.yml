@@ -245,7 +245,7 @@ services:
     logging: *default-logging
 
   # Notify about image updates instead of applying unattended updates.
-  # Checks run once per day around noon (Europe/Vienna) and never on startup.
+  # Scheduled checks run once per day around noon (Europe/Vienna).
   diun:
     image: crazymax/diun:latest
     container_name: diun
@@ -264,7 +264,6 @@ services:
       DIUN_WATCH_SCHEDULE: "0 12 * * *"
       DIUN_WATCH_JITTER: 10m
       DIUN_WATCH_FIRSTCHECKNOTIF: "false"
-      DIUN_WATCH_RUNONSTARTUP: "false"
       DIUN_PROVIDERS_DOCKER: "true"
       DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT: "true"
       DIUN_NOTIF_TELEGRAM_TOKEN: ${TELEGRAM_BOT_TOKEN}
