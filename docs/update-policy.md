@@ -6,27 +6,13 @@ This stack intentionally does not apply unattended container updates.
 
 Automatic replacement of running containers can turn an upstream image regression into an immediate outage. This is especially undesirable for Home Assistant, VPN networking and the media download path.
 
-The stack therefore uses **What's up Docker (WUD)** to inspect running containers, compare their images with registry versions and expose update status through a Web UI/API. WUD is configured here as an observer only: no automatic Docker Compose update trigger is enabled.
+The stack therefore uses **Diun** to inspect the images used by running Docker containers and send Telegram notifications when a tracked image changes. Diun does not replace or restart the application containers.
 
-## WUD access
-
-The Web UI listens on the host loopback interface only:
-
-```text
-http://127.0.0.1:13000
-```
-
-The host-side port can be changed with `WUD_WEBUI_PORT`.
-
-WUD is also attached to `media-net`, so a reverse proxy or Cloudflare Tunnel container on the same network can reach it at:
-
-```text
-http://wud:3000
-```
+LinuxServer.io explicitly recommends Diun for image-update notifications and does not recommend unattended automatic container updates.
 
 ## Normal update workflow
 
-After reviewing an available update in WUD, update deliberately:
+After receiving a notification, review the affected service and update deliberately:
 
 ```bash
 docker compose pull
@@ -50,19 +36,24 @@ Inspect service logs after important updates, especially for:
 - `transmission-openvpn`
 - `jellyfin`
 
-## Why WUD instead of Watchtower or Diun
+## Diun behavior
 
-Watchtower was removed because unattended updates are not desirable for this stack.
+Diun runs every six hours with Docker discovery enabled and `watchByDefault=true`, so running containers are checked without having to label every service individually.
 
-Diun is an excellent notification-only watcher and is still the tool LinuxServer.io explicitly recommends for image-update notifications. WUD is used here because this homelab benefits from its Web UI/API, per-container version visibility, manual trigger support and Home Assistant integration possibilities. Automatic update triggers remain disabled.
+Telegram notifications use:
 
-## Registry choice
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
 
-LinuxServer images are referenced through their official GitHub Container Registry (`ghcr.io/linuxserver/...`) rather than the `lscr.io` vanity endpoint. This avoids WUD's LSCR-specific registry/credential handling while still using LinuxServer's official published images.
+The first scan does not send notifications, which avoids an initial burst when Diun is first deployed.
+
+## Why Diun instead of Watchtower
+
+Watchtower performed unattended updates. This stack deliberately separates **detection** from **deployment** so an upstream regression does not automatically replace a working Home Assistant, VPN, media server or download client.
 
 ## Docker socket note
 
-WUD reads Docker metadata through `/var/run/docker.sock`. The mount is marked read-only at the filesystem level, but Docker daemon access is still security-sensitive. Keep WUD reachable only from trusted networks or behind authenticated access.
+Diun reads Docker metadata through `/var/run/docker.sock`. The mount is marked read-only at the filesystem level, but Docker daemon access is still security-sensitive. Run this stack only on a trusted host and do not expose the Docker socket over the network.
 
 ## Rollback preparation
 
