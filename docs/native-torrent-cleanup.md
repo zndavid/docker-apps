@@ -26,7 +26,7 @@ Run it from the repository root on the target host:
 Notes:
 
 - The script reads `TRANSMISSION_RPC_USER`, `TRANSMISSION_RPC_PASSWORD` and `TORRENT_IDLE_SEEDING_LIMIT_MINUTES` from the repository `.env` by default.
-- Keep `.env` comments on separate lines; `.env.example` follows this convention.
+- `.env.example` keeps comments on separate lines. The helper remains compatible with older files that have whitespace-separated inline comments, while preserving literal `#` characters inside passwords and tokens.
 - Sonarr and Radarr API keys are read from their `config.xml` files by default.
 - The default Transmission download-client ID is `1` in both Arr applications. Override `SONARR_DOWNLOAD_CLIENT_ID` and `RADARR_DOWNLOAD_CLIENT_ID` if your installation uses different IDs.
 - If your setup uses different paths or API endpoints, override the corresponding environment variables before running the script.
