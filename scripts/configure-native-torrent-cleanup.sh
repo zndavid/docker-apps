@@ -4,12 +4,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENV_FILE=${ENV_FILE:-"$SCRIPT_DIR/../.env"}
 
-TORRENT_IDLE_SEEDING_LIMIT_MINUTES=${TORRENT_IDLE_SEEDING_LIMIT_MINUTES:-5760}
 TRANSMISSION_RPC_URL=${TRANSMISSION_RPC_URL:-http://127.0.0.1:9091/transmission/rpc}
 SONARR_API_URL=${SONARR_API_URL:-http://127.0.0.1:8989}
 RADARR_API_URL=${RADARR_API_URL:-http://127.0.0.1:7878}
-SONARR_DOWNLOAD_CLIENT_ID=${SONARR_DOWNLOAD_CLIENT_ID:-1}
-RADARR_DOWNLOAD_CLIENT_ID=${RADARR_DOWNLOAD_CLIENT_ID:-1}
 SONARR_CONFIG_PATH=${SONARR_CONFIG_PATH:-/share/Config/sonarr/config.xml}
 RADARR_CONFIG_PATH=${RADARR_CONFIG_PATH:-/share/Config/radarr/config.xml}
 TELEGRAM_API_URL=${TELEGRAM_API_URL:-https://api.telegram.org}
@@ -48,19 +45,33 @@ read_env_file_value() {
   # appeared after values. Only strip a comment introduced by whitespace so a
   # literal '#' inside a password/token is preserved.
   value=$(printf '%s' "$value" | sed 's/[[:space:]][[:space:]]*#.*$//; s/[[:space:]]*$//')
+  [ -n "$value" ] || return 1
   printf '%s' "$value"
 }
 
 get_setting() {
   local key=$1
-  local current_value=${!key:-}
+  local env_value
 
-  if [ -n "$current_value" ]; then
-    printf '%s' "$current_value"
+  eval "env_value=\${$key:-}"
+  if [ -n "$env_value" ]; then
+    printf '%s' "$env_value"
     return 0
   fi
 
   read_env_file_value "$key"
+}
+
+get_setting_or_default() {
+  local key=$1
+  local default_value=$2
+  local value
+
+  if value=$(get_setting "$key" 2>/dev/null); then
+    printf '%s' "$value"
+  else
+    printf '%s' "$default_value"
+  fi
 }
 
 require_positive_integer() {
@@ -76,8 +87,9 @@ require_positive_integer() {
 read_arr_api_key() {
   local env_key=$1
   local config_path=$2
-  local current_value=${!env_key:-}
+  local current_value
 
+  current_value=$(get_setting "$env_key" 2>/dev/null || true)
   if [ -n "$current_value" ]; then
     printf '%s' "$current_value"
     return 0
@@ -93,8 +105,8 @@ send_telegram_notification() {
   local telegram_bot_token
   local telegram_chat_id
 
-  telegram_bot_token=$(get_setting TELEGRAM_BOT_TOKEN || true)
-  telegram_chat_id=$(get_setting TELEGRAM_CHAT_ID || true)
+  telegram_bot_token=$(get_setting TELEGRAM_BOT_TOKEN 2>/dev/null || true)
+  telegram_chat_id=$(get_setting TELEGRAM_CHAT_ID 2>/dev/null || true)
 
   if [ -z "$telegram_bot_token" ] || [ -z "$telegram_chat_id" ]; then
     log "Telegram: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing, skipping notification"
@@ -140,6 +152,7 @@ update_remove_completed_downloads() {
   local base_url=$2
   local api_key=$3
   local client_id=$4
+  local client_id_env=$5
 
   local current_json
   local updated_json
@@ -147,7 +160,7 @@ update_remove_completed_downloads() {
   current_json=$(api_get "$base_url" "$api_key" "/api/v3/downloadclient/$client_id" | tr -d '\n')
 
   if ! printf '%s' "$current_json" | grep -Eq '"implementation"[[:space:]]*:[[:space:]]*"Transmission"'; then
-    fail "$app_name download client $client_id is not a Transmission client; set the correct ${app_name^^}_DOWNLOAD_CLIENT_ID"
+    fail "$app_name download client $client_id is not a Transmission client; set the correct $client_id_env"
   fi
 
   if printf '%s' "$current_json" | grep -Eq '"removeCompletedDownloads"[[:space:]]*:[[:space:]]*true'; then
@@ -243,11 +256,11 @@ main() {
   require_command grep
   require_command mktemp
 
-  TRANSMISSION_RPC_USER=$(get_setting TRANSMISSION_RPC_USER)
-  TRANSMISSION_RPC_PASSWORD=$(get_setting TRANSMISSION_RPC_PASSWORD)
-  TORRENT_IDLE_SEEDING_LIMIT_MINUTES=$(get_setting TORRENT_IDLE_SEEDING_LIMIT_MINUTES || printf '%s' "$TORRENT_IDLE_SEEDING_LIMIT_MINUTES")
-  SONARR_DOWNLOAD_CLIENT_ID=$(get_setting SONARR_DOWNLOAD_CLIENT_ID || printf '%s' "$SONARR_DOWNLOAD_CLIENT_ID")
-  RADARR_DOWNLOAD_CLIENT_ID=$(get_setting RADARR_DOWNLOAD_CLIENT_ID || printf '%s' "$RADARR_DOWNLOAD_CLIENT_ID")
+  TRANSMISSION_RPC_USER=$(get_setting TRANSMISSION_RPC_USER 2>/dev/null || true)
+  TRANSMISSION_RPC_PASSWORD=$(get_setting TRANSMISSION_RPC_PASSWORD 2>/dev/null || true)
+  TORRENT_IDLE_SEEDING_LIMIT_MINUTES=$(get_setting_or_default TORRENT_IDLE_SEEDING_LIMIT_MINUTES 5760)
+  SONARR_DOWNLOAD_CLIENT_ID=$(get_setting_or_default SONARR_DOWNLOAD_CLIENT_ID 1)
+  RADARR_DOWNLOAD_CLIENT_ID=$(get_setting_or_default RADARR_DOWNLOAD_CLIENT_ID 1)
 
   [ -n "$TRANSMISSION_RPC_USER" ] || fail "Missing TRANSMISSION_RPC_USER"
   [ -n "$TRANSMISSION_RPC_PASSWORD" ] || fail "Missing TRANSMISSION_RPC_PASSWORD"
@@ -261,8 +274,8 @@ main() {
   [ -n "$RADARR_API_KEY" ] || fail "Missing Radarr API key"
 
   configure_transmission
-  update_remove_completed_downloads "Sonarr" "$SONARR_API_URL" "$SONARR_API_KEY" "$SONARR_DOWNLOAD_CLIENT_ID"
-  update_remove_completed_downloads "Radarr" "$RADARR_API_URL" "$RADARR_API_KEY" "$RADARR_DOWNLOAD_CLIENT_ID"
+  update_remove_completed_downloads "Sonarr" "$SONARR_API_URL" "$SONARR_API_KEY" "$SONARR_DOWNLOAD_CLIENT_ID" SONARR_DOWNLOAD_CLIENT_ID
+  update_remove_completed_downloads "Radarr" "$RADARR_API_URL" "$RADARR_API_KEY" "$RADARR_DOWNLOAD_CLIENT_ID" RADARR_DOWNLOAD_CLIENT_ID
 
   send_telegram_notification "Native torrent cleanup configured successfully on $(hostname) at $(date '+%Y-%m-%d %H:%M:%S %Z')."
   log "Native torrent cleanup is configured."
