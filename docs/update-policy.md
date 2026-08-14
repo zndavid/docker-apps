@@ -38,9 +38,9 @@ Inspect service logs after important updates, especially for:
 
 ## Diun behavior
 
-Diun runs once per day at 12:00 local time with up to 10 minutes of jitter. With `TZ=Europe/Vienna`, the normal check window is therefore approximately 12:00-12:10 Austrian local time.
+Diun runs scheduled checks once per day at 12:00 local time with up to 10 minutes of jitter. With `TZ=Europe/Vienna`, the normal scheduled check window is therefore approximately 12:00-12:10 Austrian local time.
 
-`DIUN_WATCH_RUNONSTARTUP=false` is set deliberately so restarting the NAS or the Diun container at night or in the evening does not trigger an off-schedule update check or notification.
+Diun's default startup check remains enabled, so it also checks once when the container starts.
 
 Docker discovery uses `watchByDefault=true`, so running containers are checked without having to label every service individually.
 
@@ -49,7 +49,7 @@ Telegram notifications use:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 
-The first scan does not send notifications, which avoids an initial burst when Diun is first deployed.
+The first analysis of an image does not send notifications because `firstCheckNotif=false`.
 
 ## Why Diun instead of Watchtower
 
