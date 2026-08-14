@@ -11,11 +11,6 @@ x-service-defaults: &service-defaults
     - media-net
   security_opt:
     - no-new-privileges:true
-  cap_drop:
-    - ALL
-  tmpfs:
-    - /tmp
-    - /run
   stop_grace_period: 30s
 
 services:
@@ -85,7 +80,7 @@ services:
       OPENVPN_PASSWORD: ${NORDVPN_PASS}
       WIREGUARD_PRIVATE_KEY: ${GLUETUN_WIREGUARD_PRIVATE_KEY:-}
       SERVER_COUNTRIES: ${GLUETUN_SERVER_COUNTRIES:-Austria}
-      FIREWALL_OUTBOUND_SUBNETS: ${LOCAL_NETWORK}
+      UPDATER_PERIOD: 480h
     volumes:
       - /share/Config/gluetun:/gluetun
     ports:
@@ -93,7 +88,7 @@ services:
     logging: *default-logging
 
   qbittorrent:
-    image: ghcr.io/linuxserver/qbittorrent:latest
+    image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
     profiles: ["vpn-qbit"]
     restart: unless-stopped
@@ -112,11 +107,12 @@ services:
     volumes:
       - /share/Config/qbittorrent:/config
       - /share/Downloads:/downloads
+    stop_grace_period: 30s
     logging: *default-logging
 
   sonarr:
     <<: *service-defaults
-    image: ghcr.io/linuxserver/sonarr:latest
+    image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
     environment: *common-env
     depends_on:
@@ -140,7 +136,7 @@ services:
 
   radarr:
     <<: *service-defaults
-    image: ghcr.io/linuxserver/radarr:latest
+    image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
     environment: *common-env
     depends_on:
@@ -164,7 +160,7 @@ services:
 
   prowlarr:
     <<: *service-defaults
-    image: ghcr.io/linuxserver/prowlarr:latest
+    image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
     environment: *common-env
     volumes:
@@ -181,7 +177,7 @@ services:
 
   bazarr:
     <<: *service-defaults
-    image: ghcr.io/linuxserver/bazarr:latest
+    image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
     environment: *common-env
     depends_on:
@@ -196,7 +192,7 @@ services:
     ports:
       - "127.0.0.1:6767:6767"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6767/api/system/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:6767/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -205,7 +201,7 @@ services:
 
   jellyfin:
     <<: *service-defaults
-    image: ghcr.io/linuxserver/jellyfin:latest
+    image: lscr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
     environment: *common-env
     volumes:
