@@ -45,12 +45,6 @@ services:
     ports:
       - "9091:9091"
     stop_grace_period: 60s
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
     logging: &default-logging
       driver: json-file
       options:
@@ -85,10 +79,14 @@ services:
       - /share/Config/gluetun:/gluetun
     ports:
       - "127.0.0.1:${QBITTORRENT_WEBUI_PORT:-18080}:8080"
+    labels:
+      # Keep the tightly-coupled VPN namespace pair out of automatic recreation.
+      # WUD still watches and notifies about updates.
+      wud.trigger.exclude: docker.weekly
     logging: *default-logging
 
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
+    image: ghcr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
     profiles: ["vpn-qbit"]
     restart: unless-stopped
@@ -107,12 +105,14 @@ services:
     volumes:
       - /share/Config/qbittorrent:/config
       - /share/Downloads:/downloads
+    labels:
+      wud.trigger.exclude: docker.weekly
     stop_grace_period: 30s
     logging: *default-logging
 
   sonarr:
     <<: *service-defaults
-    image: lscr.io/linuxserver/sonarr:latest
+    image: ghcr.io/linuxserver/sonarr:latest
     container_name: sonarr
     environment: *common-env
     depends_on:
@@ -136,7 +136,7 @@ services:
 
   radarr:
     <<: *service-defaults
-    image: lscr.io/linuxserver/radarr:latest
+    image: ghcr.io/linuxserver/radarr:latest
     container_name: radarr
     environment: *common-env
     depends_on:
@@ -160,7 +160,7 @@ services:
 
   prowlarr:
     <<: *service-defaults
-    image: lscr.io/linuxserver/prowlarr:latest
+    image: ghcr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
     environment: *common-env
     volumes:
@@ -177,7 +177,7 @@ services:
 
   bazarr:
     <<: *service-defaults
-    image: lscr.io/linuxserver/bazarr:latest
+    image: ghcr.io/linuxserver/bazarr:latest
     container_name: bazarr
     environment: *common-env
     depends_on:
@@ -201,7 +201,7 @@ services:
 
   jellyfin:
     <<: *service-defaults
-    image: lscr.io/linuxserver/jellyfin:latest
+    image: ghcr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
     environment: *common-env
     volumes:
@@ -250,11 +250,12 @@ services:
     read_only: true
     logging: *default-logging
 
-  # Notify about image updates instead of applying unattended updates.
-  diun:
-    image: crazymax/diun:latest
-    container_name: diun
-    command: serve
+  # Weekly automatic updater. Remote image checks only run Sunday around noon.
+  # Startup/event-triggered scans are disabled so updates cannot happen at night
+  # just because the NAS or WUD container restarted.
+  wud:
+    image: getwud/wud:8.3.0
+    container_name: wud
     restart: unless-stopped
     networks:
       - media-net
@@ -262,20 +263,25 @@ services:
       - no-new-privileges:true
     environment:
       TZ: ${TZ}
-      LOG_LEVEL: info
-      LOG_JSON: "false"
-      DIUN_DB_PATH: /data/diun.db
-      DIUN_WATCH_WORKERS: 10
-      DIUN_WATCH_SCHEDULE: "0 */6 * * *"
-      DIUN_WATCH_JITTER: 30s
-      DIUN_WATCH_FIRSTCHECKNOTIF: "false"
-      DIUN_PROVIDERS_DOCKER: "true"
-      DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT: "true"
-      DIUN_NOTIF_TELEGRAM_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      DIUN_NOTIF_TELEGRAM_CHATIDS: ${TELEGRAM_CHAT_ID}
+      WUD_WATCHER_LOCAL_SOCKET: /var/run/docker.sock
+      WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "true"
+      WUD_WATCHER_LOCAL_CRON: "0 12 * * 0"
+      WUD_WATCHER_LOCAL_JITTER: 60000
+      WUD_WATCHER_LOCAL_WATCHATSTART: "false"
+      WUD_WATCHER_LOCAL_WATCHEVENTS: "false"
+      WUD_TRIGGER_DOCKER_WEEKLY_AUTO: "true"
+      WUD_TRIGGER_DOCKER_WEEKLY_PRUNE: "true"
+      WUD_TRIGGER_TELEGRAM_UPDATES_AUTO: "true"
+      WUD_TRIGGER_TELEGRAM_UPDATES_BOTTOKEN: ${TELEGRAM_BOT_TOKEN}
+      WUD_TRIGGER_TELEGRAM_UPDATES_CHATID: ${TELEGRAM_CHAT_ID}
     volumes:
-      - /share/Config/diun:/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /share/Config/wud:/store
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:${WUD_WEBUI_PORT:-13000}:3000"
+    labels:
+      # WUD updates the rest of the stack but is upgraded deliberately.
+      wud.watch: "false"
     logging: *default-logging
 
   homeassistant:
