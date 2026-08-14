@@ -125,7 +125,7 @@ services:
       - /share/Media/Series:/tv
       - /share/Downloads:/downloads
     ports:
-      - "127.0.0.1:8989:8989"
+      - "8989:8989"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8989/ping"]
       interval: 30s
@@ -149,7 +149,7 @@ services:
       - /share/Media/Movies:/movies
       - /share/Downloads:/downloads
     ports:
-      - "127.0.0.1:7878:7878"
+      - "7878:7878"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7878/ping"]
       interval: 30s
@@ -166,7 +166,7 @@ services:
     volumes:
       - /share/Config/prowlarr:/config
     ports:
-      - "127.0.0.1:9696:9696"
+      - "9696:9696"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9696/ping"]
       interval: 30s
@@ -190,7 +190,7 @@ services:
       - /share/Media/Movies:/movies
       - /share/Media/Series:/tv
     ports:
-      - "127.0.0.1:6767:6767"
+      - "6767:6767"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6767/"]
       interval: 30s
