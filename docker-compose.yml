@@ -62,6 +62,8 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Optional parallel torrent stack. qBittorrent shares Gluetun's network
+  # namespace, so it cannot bypass the VPN if the tunnel goes down.
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
@@ -82,17 +84,12 @@ services:
       OPENVPN_USER: ${NORDVPN_USER}
       OPENVPN_PASSWORD: ${NORDVPN_PASS}
       WIREGUARD_PRIVATE_KEY: ${GLUETUN_WIREGUARD_PRIVATE_KEY:-}
-      WIREGUARD_ADDRESSES: ${GLUETUN_WIREGUARD_ADDRESSES:-}
       SERVER_COUNTRIES: ${GLUETUN_SERVER_COUNTRIES:-Austria}
       FIREWALL_OUTBOUND_SUBNETS: ${LOCAL_NETWORK}
-      FIREWALL_INPUT_PORTS: 8080,${QBITTORRENT_TORRENTING_PORT:-6881}
-      FIREWALL_VPN_INPUT_PORTS: ${QBITTORRENT_TORRENTING_PORT:-6881}
     volumes:
       - /share/Config/gluetun:/gluetun
     ports:
       - "127.0.0.1:${QBITTORRENT_WEBUI_PORT:-18080}:8080"
-      - "${QBITTORRENT_TORRENTING_PORT:-6881}:${QBITTORRENT_TORRENTING_PORT:-6881}"
-      - "${QBITTORRENT_TORRENTING_PORT:-6881}:${QBITTORRENT_TORRENTING_PORT:-6881}/udp"
     logging: *default-logging
 
   qbittorrent:
@@ -102,7 +99,8 @@ services:
     restart: unless-stopped
     network_mode: "service:gluetun"
     depends_on:
-      - gluetun
+      gluetun:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
     environment:
@@ -256,17 +254,31 @@ services:
     read_only: true
     logging: *default-logging
 
-  watchtower:
-    <<: *service-defaults
-    image: containrrr/watchtower:latest
-    container_name: watchtower
+  # Notify about image updates instead of applying unattended updates.
+  diun:
+    image: crazymax/diun:latest
+    container_name: diun
+    command: serve
+    restart: unless-stopped
+    networks:
+      - media-net
+    security_opt:
+      - no-new-privileges:true
     environment:
       TZ: ${TZ}
-      WATCHTOWER_CLEANUP: "true"
-      WATCHTOWER_SCHEDULE: 0 0 12 * * *
-      WATCHTOWER_NOTIFICATIONS: shoutrrr
-      WATCHTOWER_NOTIFICATION_URL: telegram://${TELEGRAM_BOT_TOKEN}@telegram?chats=${TELEGRAM_CHAT_ID}
+      LOG_LEVEL: info
+      LOG_JSON: "false"
+      DIUN_DB_PATH: /data/diun.db
+      DIUN_WATCH_WORKERS: 10
+      DIUN_WATCH_SCHEDULE: "0 */6 * * *"
+      DIUN_WATCH_JITTER: 30s
+      DIUN_WATCH_FIRSTCHECKNOTIF: "false"
+      DIUN_PROVIDERS_DOCKER: "true"
+      DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT: "true"
+      DIUN_NOTIF_TELEGRAM_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DIUN_NOTIF_TELEGRAM_CHATIDS: ${TELEGRAM_CHAT_ID}
     volumes:
+      - /share/Config/diun:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
     logging: *default-logging
 
