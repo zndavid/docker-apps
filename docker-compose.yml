@@ -254,11 +254,11 @@ services:
     read_only: true
     logging: *default-logging
 
-  # WUD provides a Web UI/API for controlled image-update visibility.
-  # No automatic update trigger is configured: updates stay deliberate.
-  wud:
-    image: getwud/wud:8.3.0
-    container_name: wud
+  # Notify about image updates instead of applying unattended updates.
+  diun:
+    image: crazymax/diun:latest
+    container_name: diun
+    command: serve
     restart: unless-stopped
     networks:
       - media-net
@@ -266,14 +266,20 @@ services:
       - no-new-privileges:true
     environment:
       TZ: ${TZ}
-      WUD_WATCHER_LOCAL_SOCKET: /var/run/docker.sock
-      WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "true"
-      WUD_WATCHER_LOCAL_CRON: "0 */6 * * *"
+      LOG_LEVEL: info
+      LOG_JSON: "false"
+      DIUN_DB_PATH: /data/diun.db
+      DIUN_WATCH_WORKERS: 10
+      DIUN_WATCH_SCHEDULE: "0 */6 * * *"
+      DIUN_WATCH_JITTER: 30s
+      DIUN_WATCH_FIRSTCHECKNOTIF: "false"
+      DIUN_PROVIDERS_DOCKER: "true"
+      DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT: "true"
+      DIUN_NOTIF_TELEGRAM_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DIUN_NOTIF_TELEGRAM_CHATIDS: ${TELEGRAM_CHAT_ID}
     volumes:
-      - /share/Config/wud:/store
+      - /share/Config/diun:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "127.0.0.1:${WUD_WEBUI_PORT:-13000}:3000"
     logging: *default-logging
 
   homeassistant:
