@@ -93,7 +93,7 @@ services:
     logging: *default-logging
 
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
+    image: ghcr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
     profiles: ["vpn-qbit"]
     restart: unless-stopped
@@ -116,7 +116,7 @@ services:
 
   sonarr:
     <<: *service-defaults
-    image: lscr.io/linuxserver/sonarr:latest
+    image: ghcr.io/linuxserver/sonarr:latest
     container_name: sonarr
     environment: *common-env
     depends_on:
@@ -140,7 +140,7 @@ services:
 
   radarr:
     <<: *service-defaults
-    image: lscr.io/linuxserver/radarr:latest
+    image: ghcr.io/linuxserver/radarr:latest
     container_name: radarr
     environment: *common-env
     depends_on:
@@ -164,7 +164,7 @@ services:
 
   prowlarr:
     <<: *service-defaults
-    image: lscr.io/linuxserver/prowlarr:latest
+    image: ghcr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
     environment: *common-env
     volumes:
@@ -181,7 +181,7 @@ services:
 
   bazarr:
     <<: *service-defaults
-    image: lscr.io/linuxserver/bazarr:latest
+    image: ghcr.io/linuxserver/bazarr:latest
     container_name: bazarr
     environment: *common-env
     depends_on:
@@ -205,7 +205,7 @@ services:
 
   jellyfin:
     <<: *service-defaults
-    image: lscr.io/linuxserver/jellyfin:latest
+    image: ghcr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
     environment: *common-env
     volumes:
