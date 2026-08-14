@@ -78,7 +78,7 @@ services:
     volumes:
       - /share/Config/gluetun:/gluetun
     ports:
-      - "127.0.0.1:${QBITTORRENT_WEBUI_PORT:-18080}:8080"
+      - "${QBITTORRENT_WEBUI_PORT:-18080}:8080"
     labels:
       # Keep the tightly-coupled VPN namespace pair out of automatic recreation.
       # WUD still watches and notifies about updates.
