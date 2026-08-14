@@ -38,7 +38,11 @@ Inspect service logs after important updates, especially for:
 
 ## Diun behavior
 
-Diun runs every six hours with Docker discovery enabled and `watchByDefault=true`, so running containers are checked without having to label every service individually.
+Diun runs once per day at 12:00 local time with up to 10 minutes of jitter. With `TZ=Europe/Vienna`, the normal check window is therefore approximately 12:00-12:10 Austrian local time.
+
+`DIUN_WATCH_RUNONSTARTUP=false` is set deliberately so restarting the NAS or the Diun container at night or in the evening does not trigger an off-schedule update check or notification.
+
+Docker discovery uses `watchByDefault=true`, so running containers are checked without having to label every service individually.
 
 Telegram notifications use:
 
