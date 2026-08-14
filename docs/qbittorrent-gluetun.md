@@ -75,16 +75,15 @@ The `TORRENTING_PORT` setting is still retained so qBittorrent has a determinist
 
 ## Update policy
 
-The stack uses Diun for image-update notifications rather than unattended container replacement. When an update is reported, update deliberately:
+WUD performs the normal stack's automatic image updates on Sundays around 12:00 Europe/Vienna time.
+
+The `gluetun` and `qbittorrent` containers are deliberately excluded from WUD's automatic Docker trigger because qBittorrent shares Gluetun's network namespace. Recreating only Gluetun could leave the already-running qBittorrent attached to the old namespace.
+
+WUD still watches these containers and may send Telegram update notifications. Upgrade the pair together:
 
 ```bash
-docker compose pull
-docker compose up -d
+docker compose --profile vpn-qbit pull gluetun qbittorrent
+docker compose --profile vpn-qbit up -d gluetun qbittorrent
 ```
 
-For the optional VPN stack:
-
-```bash
-docker compose --profile vpn-qbit pull
-docker compose --profile vpn-qbit up -d
-```
+Afterwards verify both containers and confirm qBittorrent still reaches the Internet through the VPN.
