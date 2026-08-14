@@ -45,12 +45,6 @@ services:
     ports:
       - "9091:9091"
     stop_grace_period: 60s
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
     logging: &default-logging
       driver: json-file
       options:
@@ -251,6 +245,7 @@ services:
     logging: *default-logging
 
   # Notify about image updates instead of applying unattended updates.
+  # Checks run once per day around noon (Europe/Vienna) and never on startup.
   diun:
     image: crazymax/diun:latest
     container_name: diun
@@ -266,9 +261,10 @@ services:
       LOG_JSON: "false"
       DIUN_DB_PATH: /data/diun.db
       DIUN_WATCH_WORKERS: 10
-      DIUN_WATCH_SCHEDULE: "0 */6 * * *"
-      DIUN_WATCH_JITTER: 30s
+      DIUN_WATCH_SCHEDULE: "0 12 * * *"
+      DIUN_WATCH_JITTER: 10m
       DIUN_WATCH_FIRSTCHECKNOTIF: "false"
+      DIUN_WATCH_RUNONSTARTUP: "false"
       DIUN_PROVIDERS_DOCKER: "true"
       DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT: "true"
       DIUN_NOTIF_TELEGRAM_TOKEN: ${TELEGRAM_BOT_TOKEN}
