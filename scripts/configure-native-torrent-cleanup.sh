@@ -15,6 +15,14 @@ RADARR_CONFIG_PATH=${RADARR_CONFIG_PATH:-/share/Config/radarr/config.xml}
 TELEGRAM_API_URL=${TELEGRAM_API_URL:-https://api.telegram.org}
 
 TRANSMISSION_SESSION_ID=""
+TMP_FILES=()
+
+cleanup_tmp_files() {
+  if [ "${#TMP_FILES[@]}" -gt 0 ]; then
+    rm -f "${TMP_FILES[@]}"
+  fi
+}
+trap cleanup_tmp_files EXIT
 
 log() {
   printf '%s\n' "$*"
@@ -31,9 +39,16 @@ require_command() {
 
 read_env_file_value() {
   local key=$1
+  local value
 
   [ -f "$ENV_FILE" ] || return 1
-  sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1
+  value=$(sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1)
+
+  # Support older .env files copied from the previous template where comments
+  # appeared after values. Only strip a comment introduced by whitespace so a
+  # literal '#' inside a password/token is preserved.
+  value=$(printf '%s' "$value" | sed 's/[[:space:]][[:space:]]*#.*$//; s/[[:space:]]*$//')
+  printf '%s' "$value"
 }
 
 get_setting() {
@@ -46,6 +61,16 @@ get_setting() {
   fi
 
   read_env_file_value "$key"
+}
+
+require_positive_integer() {
+  local key=$1
+  local value=$2
+
+  case "$value" in
+    ''|*[!0-9]*) fail "$key must be a positive integer, got: $value" ;;
+  esac
+  [ "$value" -gt 0 ] || fail "$key must be greater than zero"
 }
 
 read_arr_api_key() {
@@ -122,7 +147,7 @@ update_remove_completed_downloads() {
   current_json=$(api_get "$base_url" "$api_key" "/api/v3/downloadclient/$client_id" | tr -d '\n')
 
   if ! printf '%s' "$current_json" | grep -Eq '"implementation"[[:space:]]*:[[:space:]]*"Transmission"'; then
-    fail "$app_name download client $client_id is not a Transmission client"
+    fail "$app_name download client $client_id is not a Transmission client; set the correct ${app_name^^}_DOWNLOAD_CLIENT_ID"
   fi
 
   if printf '%s' "$current_json" | grep -Eq '"removeCompletedDownloads"[[:space:]]*:[[:space:]]*true'; then
@@ -150,6 +175,7 @@ transmission_rpc() {
 
   body_file=$(mktemp)
   header_file=$(mktemp)
+  TMP_FILES+=("$body_file" "$header_file")
   auth="${TRANSMISSION_RPC_USER}:${TRANSMISSION_RPC_PASSWORD}"
 
   curl_cmd=(
@@ -187,7 +213,6 @@ transmission_rpc() {
   [ "$status_code" = "200" ] || fail "Transmission RPC request failed with HTTP $status_code"
 
   cat "$body_file"
-  rm -f "$body_file" "$header_file"
 }
 
 configure_transmission() {
@@ -216,11 +241,19 @@ main() {
   require_command curl
   require_command sed
   require_command grep
+  require_command mktemp
 
   TRANSMISSION_RPC_USER=$(get_setting TRANSMISSION_RPC_USER)
   TRANSMISSION_RPC_PASSWORD=$(get_setting TRANSMISSION_RPC_PASSWORD)
+  TORRENT_IDLE_SEEDING_LIMIT_MINUTES=$(get_setting TORRENT_IDLE_SEEDING_LIMIT_MINUTES || printf '%s' "$TORRENT_IDLE_SEEDING_LIMIT_MINUTES")
+  SONARR_DOWNLOAD_CLIENT_ID=$(get_setting SONARR_DOWNLOAD_CLIENT_ID || printf '%s' "$SONARR_DOWNLOAD_CLIENT_ID")
+  RADARR_DOWNLOAD_CLIENT_ID=$(get_setting RADARR_DOWNLOAD_CLIENT_ID || printf '%s' "$RADARR_DOWNLOAD_CLIENT_ID")
+
   [ -n "$TRANSMISSION_RPC_USER" ] || fail "Missing TRANSMISSION_RPC_USER"
   [ -n "$TRANSMISSION_RPC_PASSWORD" ] || fail "Missing TRANSMISSION_RPC_PASSWORD"
+  require_positive_integer TORRENT_IDLE_SEEDING_LIMIT_MINUTES "$TORRENT_IDLE_SEEDING_LIMIT_MINUTES"
+  require_positive_integer SONARR_DOWNLOAD_CLIENT_ID "$SONARR_DOWNLOAD_CLIENT_ID"
+  require_positive_integer RADARR_DOWNLOAD_CLIENT_ID "$RADARR_DOWNLOAD_CLIENT_ID"
 
   SONARR_API_KEY=$(read_arr_api_key SONARR_API_KEY "$SONARR_CONFIG_PATH")
   RADARR_API_KEY=$(read_arr_api_key RADARR_API_KEY "$RADARR_CONFIG_PATH")
