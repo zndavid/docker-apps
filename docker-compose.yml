@@ -13,50 +13,18 @@ x-service-defaults: &service-defaults
     - no-new-privileges:true
   stop_grace_period: 30s
 
-services:
-  transmission-openvpn:
-    <<: *service-defaults
-    image: haugene/transmission-openvpn:latest
-    container_name: transmission-openvpn
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun
-    environment:
-      <<: *common-env
-      OPENVPN_PROVIDER: NORDVPN
-      OPENVPN_USERNAME: ${NORDVPN_USER}
-      OPENVPN_PASSWORD: ${NORDVPN_PASS}
-      OPENVPN_CONFIG: ${OPENVPN_CONFIG_COUNTRIES}
-      OPENVPN_OPTS: --inactive 3600 --ping 10 --ping-exit 60
-      NORDVPN_COUNTRY: ${NORDVPN_COUNTRY}
-      NORDVPN_CATEGORY: legacy_p2p
-      LOCAL_NETWORK: ${LOCAL_NETWORK}
-      TRANSMISSION_UTP_ENABLED: "false"
-      TRANSMISSION_DOWNLOAD_DIR: /downloads/complete
-      TRANSMISSION_INCOMPLETE_DIR: /downloads/incomplete
-      TRANSMISSION_RPC_AUTHENTICATION_REQUIRED: "true"
-      TRANSMISSION_RPC_USERNAME: ${TRANSMISSION_RPC_USER}
-      TRANSMISSION_RPC_PASSWORD: ${TRANSMISSION_RPC_PASSWORD}
-      TRANSMISSION_RPC_WHITELIST_ENABLED: "false"
-    volumes:
-      - /share/Config/transmission:/config
-      - /share/Downloads:/downloads
-    ports:
-      - "9091:9091"
-    stop_grace_period: 60s
-    logging: &default-logging
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
-  # Optional parallel torrent stack. qBittorrent shares Gluetun's network
-  # namespace, so it cannot bypass the VPN if the tunnel goes down.
+services:
+  # Primary torrent VPN. qBittorrent shares this network namespace, so it has
+  # no independent network path that could bypass the VPN tunnel.
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
-    profiles: ["vpn-qbit"]
     restart: unless-stopped
     networks:
       - media-net
@@ -69,9 +37,9 @@ services:
     environment:
       TZ: ${TZ}
       VPN_SERVICE_PROVIDER: nordvpn
-      VPN_TYPE: ${GLUETUN_VPN_TYPE:-openvpn}
-      OPENVPN_USER: ${NORDVPN_USER}
-      OPENVPN_PASSWORD: ${NORDVPN_PASS}
+      VPN_TYPE: ${GLUETUN_VPN_TYPE:-wireguard}
+      OPENVPN_USER: ${NORDVPN_USER:-}
+      OPENVPN_PASSWORD: ${NORDVPN_PASS:-}
       WIREGUARD_PRIVATE_KEY: ${GLUETUN_WIREGUARD_PRIVATE_KEY:-}
       SERVER_COUNTRIES: ${GLUETUN_SERVER_COUNTRIES:-Austria}
       UPDATER_PERIOD: 480h
@@ -88,7 +56,6 @@ services:
   qbittorrent:
     image: ghcr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
-    profiles: ["vpn-qbit"]
     restart: unless-stopped
     network_mode: "service:gluetun"
     depends_on:
@@ -118,8 +85,6 @@ services:
     depends_on:
       prowlarr:
         condition: service_healthy
-      transmission-openvpn:
-        condition: service_healthy
     volumes:
       - /share/Config/sonarr:/config
       - /share/Media/Series:/tv
@@ -141,8 +106,6 @@ services:
     environment: *common-env
     depends_on:
       prowlarr:
-        condition: service_healthy
-      transmission-openvpn:
         condition: service_healthy
     volumes:
       - /share/Config/radarr:/config

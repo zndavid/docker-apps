@@ -1,89 +1,107 @@
 # qBittorrent + Gluetun
 
-This repository keeps the existing `Transmission-OpenVPN` service and adds an independent, opt-in `qBittorrent + Gluetun` stack for testing and gradual migration.
+`qBittorrent + Gluetun` is the primary torrent stack in this repository. The previous `Transmission-OpenVPN` service has been removed.
 
 ## Why this stack
 
-Gluetun is kept separate from qBittorrent so VPN transport, firewalling and application lifecycle are isolated. qBittorrent uses `network_mode: "service:gluetun"`, which makes it share Gluetun's network namespace. If the VPN path is unavailable, qBittorrent has no separate Docker network path to bypass it.
+Gluetun is kept separate from qBittorrent so VPN transport, firewalling and application lifecycle remain isolated. qBittorrent uses:
 
-Gluetun supports NordVPN directly with both OpenVPN and WireGuard. OpenVPN is the recommended first setup here because it reuses the same NordVPN service credentials already used by Transmission.
+```yaml
+network_mode: "service:gluetun"
+```
 
-All-in-one VPN/qBittorrent images were considered as well. The separate Gluetun model is kept because NordVPN is a native provider, VPN lifecycle/firewalling stay independent from qBittorrent, and the torrent client can be replaced without changing the VPN layer.
+This makes qBittorrent share Gluetun's network namespace. qBittorrent therefore has no separate Docker network path that could bypass the VPN tunnel.
 
 ## Configuration
 
-Fill these values in `.env`:
-
-- `GLUETUN_VPN_TYPE=openvpn` for the initial setup
-- `GLUETUN_SERVER_COUNTRIES=Austria` or another comma-separated country list
-- `QBITTORRENT_WEBUI_PORT=18080`
-- `QBITTORRENT_TORRENTING_PORT=6881`
-
-For OpenVPN, Gluetun uses `NORDVPN_USER` and `NORDVPN_PASS`. These must be NordVPN service credentials, not the normal account email/password.
-
-For NordVPN WireGuard, set:
+The default setup uses NordVPN WireGuard. Fill these values in `.env`:
 
 ```dotenv
 GLUETUN_VPN_TYPE=wireguard
 GLUETUN_WIREGUARD_PRIVATE_KEY=your_real_nordvpn_wireguard_private_key
+GLUETUN_SERVER_COUNTRIES=Austria
+QBITTORRENT_WEBUI_PORT=18080
+QBITTORRENT_TORRENTING_PORT=6881
 ```
 
-NordVPN's native Gluetun integration requires the WireGuard private key; a separate `WIREGUARD_ADDRESSES` value is not required for this provider.
+NordVPN's native Gluetun integration requires the WireGuard private key. A separate `WIREGUARD_ADDRESSES` value is not required for this provider.
 
-The Compose file also sets `UPDATER_PERIOD=480h`, which lets Gluetun periodically refresh its internal VPN server list without checking excessively often.
+OpenVPN remains available as a fallback. If you deliberately set `GLUETUN_VPN_TYPE=openvpn`, also provide NordVPN service credentials through `NORDVPN_USER` and `NORDVPN_PASS`.
 
-## Start the optional stack
+The Compose file sets `UPDATER_PERIOD=480h`, allowing Gluetun to refresh its VPN server list periodically.
+
+## Start the stack
+
+Gluetun and qBittorrent are normal services now; no Compose profile is required:
 
 ```bash
-docker compose --profile vpn-qbit up -d gluetun qbittorrent
+docker compose up -d gluetun qbittorrent
 ```
 
 Check status:
 
 ```bash
-docker compose --profile vpn-qbit ps
-docker logs gluetun
-docker logs qbittorrent
+docker compose ps gluetun qbittorrent
+docker logs --tail 100 gluetun
+docker logs --tail 100 qbittorrent
 ```
 
-The WebUI is deliberately published only on localhost:
+The qBittorrent WebUI is published on the NAS at the configured port. With the default value and NAS address `192.168.178.78`:
 
 ```text
-http://127.0.0.1:18080
+http://192.168.178.78:18080
 ```
 
-On first startup the LinuxServer qBittorrent image prints a temporary password for the `admin` user in its container log. Change the credentials in qBittorrent after logging in.
+On first startup the LinuxServer qBittorrent image may print a temporary password for the `admin` user in its container log. Set a permanent WebUI password after logging in; the qBittorrent config volume persists it across container recreation.
+
+## Verify VPN egress
+
+To verify traffic through Gluetun, run a temporary container inside Gluetun's network namespace:
+
+```bash
+docker run --rm --network=container:gluetun alpine:3.22 \
+  sh -c "apk add --no-cache wget >/dev/null && wget -qO- https://ipinfo.io"
+```
+
+The returned public IP should be the VPN exit address rather than the NAS/router's normal public IP. With `SERVER_COUNTRIES=Austria`, the selected exit should normally be in Austria.
 
 ## Sonarr / Radarr integration
 
-Because Gluetun is attached to `media-net`, containers on that network can reach qBittorrent through Gluetun's container address. Add qBittorrent as a second download client using:
+Because Gluetun is attached to `media-net`, Sonarr and Radarr can reach qBittorrent through the Gluetun service name. Configure qBittorrent as the download client with:
 
 ```text
 Host: gluetun
-Port: 8080
+Port: 18080
+SSL: off
 ```
 
-No Docker host-port publication is needed for this container-to-container path.
+Use the qBittorrent WebUI username/password configured in qBittorrent. Keep distinct categories such as `sonarr` and `radarr` so the applications can track their own downloads.
 
-Keep Transmission configured until the qBittorrent path has been tested successfully. This lets both clients coexist without changing the current production download path.
+Sonarr and Radarr no longer depend on a Transmission container during startup. If Gluetun or qBittorrent is temporarily unavailable, the Arr applications remain available and simply report the download client as unavailable until the VPN stack recovers.
+
+## Download cleanup
+
+The previous repository script that configured Transmission-specific seeding and cleanup has been removed. Torrent seeding limits and completed-download removal should now be configured in qBittorrent and the Arr applications themselves.
+
+This avoids keeping a second automation layer tied to a download client that is no longer part of the stack.
 
 ## Port-forwarding note
 
-NordVPN does not provide inbound port forwarding. Therefore the Compose file intentionally does **not** publish qBittorrent's torrent TCP/UDP port on the Docker host and does not set `FIREWALL_VPN_INPUT_PORTS` for it. Publishing a Docker host port would not create an inbound forwarded port on NordVPN's public VPN address.
+NordVPN does not provide inbound port forwarding. Therefore the Compose file intentionally does **not** publish qBittorrent's torrent TCP/UDP listen port on the Docker host and does not open a VPN input port for it.
 
-The `TORRENTING_PORT` setting is still retained so qBittorrent has a deterministic internal listen port.
+`QBITTORRENT_TORRENTING_PORT` is retained so qBittorrent has a deterministic internal listen port.
 
 ## Update policy
 
-WUD performs the normal stack's automatic image updates on Sundays around 12:00 Europe/Vienna time.
+WUD performs normal automatic image updates on Sundays around 12:00 Europe/Vienna time.
 
-The `gluetun` and `qbittorrent` containers are deliberately excluded from WUD's automatic Docker trigger because qBittorrent shares Gluetun's network namespace. Recreating only Gluetun could leave the already-running qBittorrent attached to the old namespace.
+The `gluetun` and `qbittorrent` containers are deliberately excluded from WUD's automatic Docker trigger because qBittorrent shares Gluetun's network namespace. Recreating only Gluetun could leave an already-running qBittorrent attached to the old namespace.
 
-WUD still watches these containers and may send Telegram update notifications. Upgrade the pair together:
+WUD can still watch these containers and send Telegram update notifications. Upgrade the pair together:
 
 ```bash
-docker compose --profile vpn-qbit pull gluetun qbittorrent
-docker compose --profile vpn-qbit up -d gluetun qbittorrent
+docker compose pull gluetun qbittorrent
+docker compose up -d --force-recreate gluetun qbittorrent
 ```
 
-Afterwards verify both containers and confirm qBittorrent still reaches the Internet through the VPN.
+Afterwards verify both containers and confirm VPN egress again.
