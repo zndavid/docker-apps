@@ -44,7 +44,7 @@ WUD itself is excluded from self-updates and should be upgraded deliberately.
 
 ### Gluetun + qBittorrent exception
 
-The optional `gluetun` and `qbittorrent` containers are watched, but excluded from the automatic Docker trigger.
+`gluetun` and `qbittorrent` are the primary torrent stack. They are watched, but excluded from the automatic Docker trigger.
 
 qBittorrent uses:
 
@@ -52,14 +52,14 @@ qBittorrent uses:
 network_mode: service:gluetun
 ```
 
-so the two containers share one network namespace. Recreating Gluetun independently could leave a running qBittorrent container attached to the old namespace. For that reason WUD may notify about updates for these two containers, but they should currently be upgraded together:
+so the two containers share one network namespace. Recreating Gluetun independently could leave a running qBittorrent container attached to the old namespace. For that reason WUD may notify about updates for these two containers, but they should be upgraded together:
 
 ```bash
-docker compose --profile vpn-qbit pull gluetun qbittorrent
-docker compose --profile vpn-qbit up -d gluetun qbittorrent
+docker compose pull gluetun qbittorrent
+docker compose up -d --force-recreate gluetun qbittorrent
 ```
 
-Transmission remains the primary download path while this optional stack is being tested.
+After updating the pair, confirm Gluetun is healthy and verify the VPN exit IP before relying on qBittorrent again.
 
 ## Registry choice
 
@@ -69,7 +69,7 @@ LinuxServer images use their official public GitHub Container Registry reference
 ghcr.io/linuxserver/...
 ```
 
-WUD requires GitHub credentials for its LSCR registry integration, while public GHCR images can be checked without configuring a token. Using GHCR therefore keeps the updater simpler and avoids storing an additional GitHub Personal Access Token on the NAS.
+Public GHCR images can be checked without adding a separate registry credential to WUD, keeping the updater configuration simpler.
 
 ## Docker socket note
 
@@ -77,12 +77,14 @@ WUD must have write-capable access to `/var/run/docker.sock` because automatic c
 
 ## Manual update / recovery
 
-A full manual refresh can still be performed from the stack directory:
+A full manual refresh can be performed from the stack directory:
 
 ```bash
 docker compose pull
 docker compose up -d --remove-orphans
 docker compose ps
 ```
+
+Because qBittorrent shares Gluetun's network namespace, if either of those two services is specifically recreated or upgraded, recreate the pair together and verify VPN egress afterwards.
 
 Before major application changes, keep backups of the corresponding `/share/Config/<service>` directories. If an upstream release causes a regression, pin or restore the previous known-good image and recreate the affected service.
