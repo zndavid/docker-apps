@@ -241,7 +241,7 @@ services:
       - /share/Config/wud:/store
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "127.0.0.1:${WUD_WEBUI_PORT:-13000}:3000"
+      - "${WUD_WEBUI_PORT:-13000}:3000"
     labels:
       # WUD updates the rest of the stack but is upgraded deliberately.
       wud.watch: "false"

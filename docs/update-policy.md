@@ -34,7 +34,7 @@ A Telegram trigger is configured in parallel using:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 
-The WUD Web UI is available on the host loopback interface at `WUD_WEBUI_PORT` (default `13000`).
+The WUD Web UI is published on the NAS at `WUD_WEBUI_PORT` (default `13000`) for LAN access, for example `http://192.168.178.78:13000`.
 
 ## Update scope
 
