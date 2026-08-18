@@ -138,6 +138,22 @@ services:
       start_period: 30s
     logging: *default-logging
 
+  lazylibrarian:
+    <<: *service-defaults
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
+    environment: *common-env
+    depends_on:
+      prowlarr:
+        condition: service_healthy
+    volumes:
+      - /share/Config/lazylibrarian:/config
+      - /share/Downloads:/downloads
+      - /share/Media/Books:/books
+    ports:
+      - "5299:5299"
+    logging: *default-logging
+
   bazarr:
     <<: *service-defaults
     image: ghcr.io/linuxserver/bazarr:latest
