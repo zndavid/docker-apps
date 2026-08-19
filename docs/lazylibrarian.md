@@ -7,16 +7,23 @@ LazyLibrarian is the ebook request/search/download automation layer in the media
 - Web UI: `http://<NAS-IP>:5299`
 - Config: `/share/Config/lazylibrarian` -> `/config`
 - Shared downloads: `/share/Downloads` -> `/downloads`
-- Processed-book destination: `/share/Media/Calibre-Ingest` -> `/books`
+- LazyLibrarian library: `/share/Media/LazyLibrarian` -> `/books`
+- CWA handoff: `/share/Media/Calibre-Ingest` -> `/cwa-ingest`
 
-The `/books` path is intentionally the Calibre-Web Automated ingest directory, not the final Calibre library. LazyLibrarian should post-process completed downloads there; CWA then imports them into the managed Calibre library.
+LazyLibrarian must keep its own persistent library under `/books`. Do not point `/books` directly at the CWA ingest directory: CWA removes successfully ingested files, while LazyLibrarian's library scan treats `/books` as its own library root and may try to remove it when it becomes empty.
+
+Successful LazyLibrarian post-processing should copy ebooks into `/cwa-ingest` using LazyLibrarian's built-in Calibre Books Auto Add Directory setting. CWA then imports that handoff copy into the managed Calibre library.
 
 ## Start the service
 
 ```bash
-mkdir -p /share/Config/lazylibrarian /share/Media/Calibre-Ingest
+mkdir -p \
+  /share/Config/lazylibrarian \
+  /share/Media/LazyLibrarian \
+  /share/Media/Calibre-Ingest
+
 docker compose pull lazylibrarian
-docker compose up -d lazylibrarian
+docker compose up -d --force-recreate lazylibrarian
 docker compose logs -f lazylibrarian
 ```
 
@@ -46,15 +53,31 @@ In **Prowlarr -> Settings -> Apps -> LazyLibrarian** use:
 
 Prowlarr will create and maintain the appropriate provider entries in LazyLibrarian.
 
-## Processing destination
+## Processing settings
 
-Configure LazyLibrarian's ebook destination as:
+In LazyLibrarian open **Settings -> Processing** and use:
 
 ```text
-/books
+Download Directories: /downloads/books
+eBook Library Folder: /books
+Keep original files: enabled
 ```
 
-This resolves to `/share/Media/Calibre-Ingest` on the NAS. CWA owns the final `/share/Media/Books` library and its `metadata.db`; LazyLibrarian must not write directly into that library.
+`/books` resolves to `/share/Media/LazyLibrarian` on the NAS and remains a persistent LazyLibrarian-owned library.
+
+## CWA handoff via Calibre Auto Add
+
+In LazyLibrarian open **Settings -> Importing**. In the **Calibre** section use:
+
+```text
+Calibre Books Auto Add Directory: /cwa-ingest
+Keep a copy of the book in the local library: enabled
+Only add eBook, not opf or jpg: enabled
+```
+
+Leave **Calibredb import program** empty and leave **Use Calibre Content Server** disabled. LazyLibrarian is not importing directly into Calibre; it is only placing a handoff copy in CWA's watched ingest directory.
+
+`/cwa-ingest` resolves to `/share/Media/Calibre-Ingest` on the NAS. CWA owns the final `/share/Media/Books` library and its `metadata.db`; LazyLibrarian must not write directly into that final library.
 
 Both LazyLibrarian and qBittorrent see the shared download tree under:
 
@@ -68,9 +91,11 @@ Both LazyLibrarian and qBittorrent see the shared download tree under:
 LazyLibrarian
   -> Prowlarr
   -> qBittorrent
-  -> /downloads
+  -> /downloads/books
   -> LazyLibrarian post-processing
-  -> /books (Calibre-Ingest)
+  -> /books (persistent LL library)
+  -> Calibre Books Auto Add copy
+  -> /cwa-ingest (Calibre-Ingest)
   -> Calibre-Web Automated
   -> /calibre-library (NAS: /share/Media/Books)
 ```
@@ -84,5 +109,6 @@ Test with a legally obtained ebook:
 1. Add/request the book in LazyLibrarian.
 2. Confirm Prowlarr returns the expected provider result.
 3. Confirm qBittorrent receives it with the `books` category.
-4. Confirm LazyLibrarian post-processes it into `/books`.
-5. Confirm CWA removes it from its ingest directory after successful processing and adds it to the Calibre library.
+4. Confirm LazyLibrarian post-processes it into `/books` and keeps that library copy.
+5. Confirm LazyLibrarian places a handoff copy in `/cwa-ingest`.
+6. Confirm CWA removes the ingest copy after successful processing and adds the book to the Calibre library.
