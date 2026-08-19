@@ -1,22 +1,20 @@
 # LazyLibrarian setup
 
-LazyLibrarian is added to the existing media stack as a lightweight ebook automation service.
+LazyLibrarian is the ebook request/search/download automation layer in the media stack.
 
 ## Container layout
 
 - Web UI: `http://<NAS-IP>:5299`
 - Config: `/share/Config/lazylibrarian` -> `/config`
 - Shared downloads: `/share/Downloads` -> `/downloads`
-- Ebook library: `/share/Media/Books` -> `/books`
+- Processed-book destination: `/share/Media/Calibre-Ingest` -> `/books`
 
-The container uses the same `PUID`, `PGID`, `TZ`, `media-net`, restart policy, security option and logging defaults as the other media services.
-
-No Calibre Docker mod is enabled by default. This keeps the container lightweight and assumes downloaded EPUB files can be sent to Kindle without conversion. Conversion can be added later if it is actually needed.
+The `/books` path is intentionally the Calibre-Web Automated ingest directory, not the final Calibre library. LazyLibrarian should post-process completed downloads there; CWA then imports them into the managed Calibre library.
 
 ## Start the service
 
 ```bash
-mkdir -p /share/Config/lazylibrarian /share/Media/Books
+mkdir -p /share/Config/lazylibrarian /share/Media/Calibre-Ingest
 docker compose pull lazylibrarian
 docker compose up -d lazylibrarian
 docker compose logs -f lazylibrarian
@@ -26,28 +24,37 @@ docker compose logs -f lazylibrarian
 
 In LazyLibrarian, open **Settings -> Downloaders** and configure qBittorrent.
 
-Because qBittorrent shares Gluetun's network namespace, use the Gluetun service from inside the Docker network:
+Because qBittorrent shares Gluetun's network namespace, use:
 
 - Host: `gluetun`
 - Port: `18080` unless `QBITTORRENT_WEBUI_PORT` was changed
-- Username/password: the existing qBittorrent Web UI credentials
-- Category: use a dedicated category such as `books`
+- Username/password: the qBittorrent Web UI credentials
+- Category/label: `books`
 
-Use the built-in connection test before saving.
+Keep seeding enabled and keep/copy original files so post-processing does not break active torrents.
 
 ## Prowlarr
 
-LazyLibrarian supports Torznab providers. Add the Torznab endpoint exposed by Prowlarr under **Settings -> Providers -> Torznab** and keep the API key only in LazyLibrarian's runtime config; do not commit it to this repository.
+Use Prowlarr's native LazyLibrarian application integration rather than manually creating a generic Torznab URL.
 
-The Prowlarr service is reachable from LazyLibrarian as `http://prowlarr:9696` on `media-net`.
+In **Prowlarr -> Settings -> Apps -> LazyLibrarian** use:
 
-## Ebook library
+- Sync Level: `Full Sync`
+- Prowlarr Server: `http://prowlarr:9696`
+- LazyLibrarian Server: `http://lazylibrarian:5299`
+- API Key: the LazyLibrarian API key from **Settings -> Interface**
 
-Configure the ebook destination inside LazyLibrarian as:
+Prowlarr will create and maintain the appropriate provider entries in LazyLibrarian.
+
+## Processing destination
+
+Configure LazyLibrarian's ebook destination as:
 
 ```text
 /books
 ```
+
+This resolves to `/share/Media/Calibre-Ingest` on the NAS. CWA owns the final `/share/Media/Books` library and its `metadata.db`; LazyLibrarian must not write directly into that library.
 
 Both LazyLibrarian and qBittorrent see the shared download tree under:
 
@@ -55,32 +62,27 @@ Both LazyLibrarian and qBittorrent see the shared download tree under:
 /downloads
 ```
 
-This keeps container paths consistent and avoids remote path mapping for the local Docker stack.
+## End-to-end flow
 
-## Automatic Send to Kindle
+```text
+LazyLibrarian
+  -> Prowlarr
+  -> qBittorrent
+  -> /downloads
+  -> LazyLibrarian post-processing
+  -> /books (Calibre-Ingest)
+  -> Calibre-Web Automated
+  -> /calibre-library (NAS: /share/Media/Books)
+```
 
-LazyLibrarian can email the downloaded book automatically after it is added to the library.
-
-Under **Settings -> Notifications -> Email**:
-
-1. Configure the SMTP server and sender account.
-2. Set **Email To** to the Kindle personal-document email address.
-3. Enable **Notify on Download**.
-4. Enable **Attach book on download**.
-5. Send a test email.
-
-The SMTP sender must also be allowed in the Amazon account's approved personal-document sender list.
-
-The repository already contains placeholder SMTP variables in `.env.example`; real credentials must remain in the untracked `.env` file or in LazyLibrarian's own config.
+Configure e-reader/Kindle delivery in Calibre-Web Automated after this ingest path is validated.
 
 ## Initial validation
 
-After setup, test the workflow with a legally obtained EPUB:
+Test with a legally obtained ebook:
 
-1. Add the book to LazyLibrarian.
-2. Confirm the search provider returns the expected result.
-3. Confirm the download is sent to qBittorrent with the `books` category.
-4. Confirm post-processing imports the EPUB into `/books`.
-5. Confirm the email notifier attaches and sends the EPUB successfully.
-
-Only add conversion tooling if real-world files prove to need it.
+1. Add/request the book in LazyLibrarian.
+2. Confirm Prowlarr returns the expected provider result.
+3. Confirm qBittorrent receives it with the `books` category.
+4. Confirm LazyLibrarian post-processes it into `/books`.
+5. Confirm CWA removes it from its ingest directory after successful processing and adds it to the Calibre library.
