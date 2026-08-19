@@ -149,9 +149,25 @@ services:
     volumes:
       - /share/Config/lazylibrarian:/config
       - /share/Downloads:/downloads
-      - /share/Media/Books:/books
+      # LazyLibrarian post-processes completed books into CWA's ingest directory.
+      - /share/Media/Calibre-Ingest:/books
     ports:
       - "5299:5299"
+    logging: *default-logging
+
+  calibre-web-automated:
+    <<: *service-defaults
+    image: crocodilestick/calibre-web-automated:latest
+    container_name: calibre-web-automated
+    environment: *common-env
+    volumes:
+      - /share/Config/calibre-web-automated:/config
+      # CWA removes files from this directory after successful ingest.
+      - /share/Media/Calibre-Ingest:/cwa-book-ingest
+      # CWA owns and maintains the Calibre library/database here.
+      - /share/Media/Books:/calibre-library
+    ports:
+      - "${CWA_WEBUI_PORT:-8083}:8083"
     logging: *default-logging
 
   bazarr:
