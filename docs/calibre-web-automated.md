@@ -9,18 +9,21 @@ Calibre-Web Automated (CWA) owns the final ebook library and sits after LazyLibr
 - Ingest: `/share/Media/Calibre-Ingest` -> `/cwa-book-ingest`
 - Calibre library: `/share/Media/Books` -> `/calibre-library`
 
-CWA removes files from `/cwa-book-ingest` after successful processing. Do not point qBittorrent's active download directory directly at the ingest mount.
+CWA removes files from `/cwa-book-ingest` after successful processing. Do not point qBittorrent's active download directory or LazyLibrarian's persistent `/books` library directly at this ingest mount.
+
+LazyLibrarian keeps its own library at `/share/Media/LazyLibrarian` -> `/books` and uses `/share/Media/Calibre-Ingest` -> `/cwa-ingest` only as a handoff copy directory.
 
 ## Prepare directories
 
 ```bash
 mkdir -p \
   /share/Config/calibre-web-automated \
+  /share/Media/LazyLibrarian \
   /share/Media/Calibre-Ingest \
   /share/Media/Books
 ```
 
-Before first start, inspect `/share/Media/Books`. If it contains books from the previous direct LazyLibrarian setup but does not contain a Calibre `metadata.db`, treat those as migration input rather than as an already-managed Calibre library.
+Before first start, inspect `/share/Media/Books`. If it contains books from a previous direct LazyLibrarian setup but does not contain a Calibre `metadata.db`, treat those as migration input rather than as an already-managed Calibre library.
 
 ## Start CWA
 
@@ -40,10 +43,18 @@ CWA can create a fresh Calibre library at `/calibre-library` when no existing Ca
 
 ## Ingest workflow
 
-LazyLibrarian's `/books` mount points to the same NAS directory that CWA sees as `/cwa-book-ingest`:
+LazyLibrarian and CWA share only the handoff directory:
 
 ```text
 LazyLibrarian /books
+        |
+        | persistent LL library
+        v
+/share/Media/LazyLibrarian
+        |
+        | Calibre Books Auto Add copy
+        v
+LazyLibrarian /cwa-ingest
         |
         v
 /share/Media/Calibre-Ingest
@@ -58,7 +69,7 @@ CWA /calibre-library
 /share/Media/Books
 ```
 
-This separation is intentional: CWA exclusively owns the final Calibre library and `metadata.db`.
+This separation is intentional: CWA exclusively owns the final Calibre library and `metadata.db`, while LazyLibrarian keeps its own stable library root for post-processing and library scans.
 
 ## Recommended first settings
 
@@ -73,10 +84,11 @@ For the initial validation, keep the workflow simple:
 
 Use a legally obtained ebook and confirm:
 
-1. LazyLibrarian copies/post-processes it into `/books`.
-2. The file appears in `/share/Media/Calibre-Ingest`.
-3. CWA detects and processes it.
-4. The ingest copy disappears after successful processing.
-5. The book appears in the CWA web UI and in `/share/Media/Books` as part of the managed Calibre library.
+1. LazyLibrarian post-processes it into `/books` and keeps the local library copy.
+2. LazyLibrarian's Calibre Auto Add handoff places an ebook copy in `/cwa-ingest`.
+3. The handoff file appears in `/share/Media/Calibre-Ingest`.
+4. CWA detects and processes it.
+5. The ingest copy disappears after successful processing.
+6. The book appears in the CWA web UI and in `/share/Media/Books` as part of the managed Calibre library.
 
 After this works, configure CWA's Auto-Send to eReader feature for the Kindle delivery step.
