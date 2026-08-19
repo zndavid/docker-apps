@@ -13,10 +13,11 @@ echo "Syncing ${REPO_ROOT}/ -> ${REMOTE}:${NAS_PATH}/"
 
 ssh "${REMOTE}" "mkdir -p '${NAS_PATH}'"
 
-# Intentionally no --delete: NAS-only files such as an existing .env are preserved.
-# Dotfiles are copied, so a local .env will be transferred when present.
+# Intentionally no --delete: NAS-only runtime files are preserved.
+# Never overwrite the NAS runtime .env from a developer checkout.
 rsync -rltvz --progress \
   --exclude '.git/' \
+  --exclude '.env' \
   --exclude '.DS_Store' \
   --exclude 'Thumbs.db' \
   "${REPO_ROOT}/" \

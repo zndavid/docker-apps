@@ -149,8 +149,10 @@ services:
     volumes:
       - /share/Config/lazylibrarian:/config
       - /share/Downloads:/downloads
-      # LazyLibrarian post-processes completed books into CWA's ingest directory.
-      - /share/Media/Calibre-Ingest:/books
+      # LazyLibrarian keeps its own persistent library here.
+      - /share/Media/LazyLibrarian:/books
+      # Successful LL post-processing copies ebooks here for CWA to ingest.
+      - /share/Media/Calibre-Ingest:/cwa-ingest
     ports:
       - "5299:5299"
     logging: *default-logging
