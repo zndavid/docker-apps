@@ -43,6 +43,9 @@ services:
       WIREGUARD_PRIVATE_KEY: ${GLUETUN_WIREGUARD_PRIVATE_KEY:-}
       SERVER_COUNTRIES: ${GLUETUN_SERVER_COUNTRIES:-Austria}
       UPDATER_PERIOD: 480h
+      # qBittorrent/libtorrent can remain stalled after Gluetun internally
+      # rebuilds the VPN tunnel. Signal the recovery watcher on every VPN-up.
+      VPN_UP_COMMAND: /bin/sh -c "date +%s > /gluetun/vpn-up.timestamp"
     volumes:
       - /share/Config/gluetun:/gluetun
     ports:
@@ -75,6 +78,35 @@ services:
     labels:
       wud.trigger.exclude: docker.weekly
     stop_grace_period: 30s
+    logging: *default-logging
+
+  # Gluetun auto-heals its VPN internally. qBittorrent 5.x/libtorrent can keep
+  # stale peer connections after that event, so restart only qBittorrent once
+  # the rebuilt tunnel is healthy. This helper has no network access.
+  qbittorrent-recovery:
+    image: docker:27-cli
+    container_name: qbittorrent-recovery
+    restart: unless-stopped
+    network_mode: none
+    depends_on:
+      gluetun:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      GLUETUN_CONTAINER: gluetun
+      QBITTORRENT_CONTAINER: qbittorrent
+      VPN_UP_MARKER_FILE: /gluetun/vpn-up.timestamp
+      POLL_INTERVAL: 5
+      RECOVERY_DELAY: 10
+      HEALTH_WAIT_TIMEOUT: 120
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /share/Config/gluetun:/gluetun:ro
+      - ./scripts/qbittorrent-vpn-recovery.sh:/usr/local/bin/qbittorrent-vpn-recovery.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/qbittorrent-vpn-recovery.sh"]
     logging: *default-logging
 
   sonarr:
