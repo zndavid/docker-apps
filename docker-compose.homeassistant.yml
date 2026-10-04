@@ -18,7 +18,7 @@ services:
       - no-new-privileges:true
     labels:
       # The media-stack WUD watcher can notify, but HA is updated separately.
-      wud.trigger.exclude: docker.manual
+      wud.trigger.exclude: docker.auto
     logging:
       driver: json-file
       options:
