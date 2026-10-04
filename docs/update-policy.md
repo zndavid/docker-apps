@@ -2,6 +2,12 @@
 
 This stack uses **What's up Docker (WUD)** for controlled automatic updates.
 
+## GitOps and image updates
+
+Portainer polls GitHub for **Compose configuration changes**; WUD handles **container image updates**. Follow [NAS deployment](nas-deploy.md) for the GitOps settings. Keep Portainer Re-pull image and Force redeployment disabled for normal polling.
+
+For a Portainer-managed stack, apply configuration and deliberate image-tag changes through Git. The local Compose commands below are only for deployments managed directly with Compose; do not create a competing project on the same NAS. For a deliberate full image refresh in Portainer, use Pull and redeploy with Re-pull image enabled and verify the Gluetun/qBittorrent pair afterwards.
+
 ## Schedule
 
 WUD checks for new container images once per week:

@@ -14,7 +14,7 @@ This makes qBittorrent share Gluetun's network namespace. qBittorrent therefore 
 
 ## Configuration
 
-The default setup uses NordVPN WireGuard. Fill these values in `.env`:
+The default setup uses NordVPN WireGuard. Set these values in the Portainer stack environment (or in `.env` for local Compose):
 
 ```dotenv
 GLUETUN_VPN_TYPE=wireguard
@@ -31,6 +31,8 @@ OpenVPN remains available as a fallback. If you deliberately set `GLUETUN_VPN_TY
 The Compose file sets `UPDATER_PERIOD=480h`, allowing Gluetun to refresh its VPN server list periodically.
 
 ## Start the stack
+
+For the Git-managed deployment, follow [NAS deployment](nas-deploy.md) and use Portainer. The commands below are for a local Compose checkout; do not run a second Compose project alongside the Portainer stack.
 
 Gluetun and qBittorrent are normal services now; no Compose profile is required:
 
