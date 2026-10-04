@@ -57,7 +57,7 @@ services:
     labels:
       # Keep the tightly-coupled VPN namespace pair out of automatic recreation.
       # WUD still watches and notifies about updates.
-      wud.trigger.exclude: docker.manual
+      wud.trigger.exclude: docker.auto
       io.github.zndavid.vpn-stack-revision: *vpn-stack-revision
     logging: *default-logging
 
@@ -85,7 +85,7 @@ services:
         bind:
           create_host_path: false
     labels:
-      wud.trigger.exclude: docker.manual
+      wud.trigger.exclude: docker.auto
       io.github.zndavid.vpn-stack-revision: *vpn-stack-revision
     stop_grace_period: 30s
     logging: *default-logging
@@ -332,8 +332,9 @@ services:
     read_only: true
     logging: *default-logging
 
-  # Weekly image checks and Telegram notifications; updates require a manual
-  # Docker trigger in WUD. Startup/event scans remain disabled.
+  # Weekly image checks, Telegram notifications and automatic updates for
+  # eligible containers. The VPN namespace pair and WUD itself stay Git-managed.
+  # Startup/event scans remain disabled.
   wud:
     image: getwud/wud:9.2.1
     container_name: wud
@@ -353,8 +354,8 @@ services:
       WUD_WATCHER_LOCAL_WATCHEVENTS: "false"
       WUD_AUTH_ADMIN_USER: ${WUD_ADMIN_USER:-admin}
       WUD_AUTH_ADMIN_PASSWORD: ${WUD_ADMIN_PASSWORD:?Set a private WUD_ADMIN_PASSWORD in Portainer}
-      WUD_TRIGGER_DOCKER_MANUAL_AUTO: "false"
-      WUD_TRIGGER_DOCKER_MANUAL_PRUNE: "false"
+      WUD_TRIGGER_DOCKER_AUTO_AUTO: "true"
+      WUD_TRIGGER_DOCKER_AUTO_PRUNE: "false"
       WUD_TRIGGER_TELEGRAM_UPDATES_AUTO: "true"
       WUD_TRIGGER_TELEGRAM_UPDATES_BOTTOKEN: ${TELEGRAM_BOT_TOKEN}
       WUD_TRIGGER_TELEGRAM_UPDATES_CHATID: ${TELEGRAM_CHAT_ID}
