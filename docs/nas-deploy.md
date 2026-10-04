@@ -75,9 +75,10 @@ NAS LAN; a connection through the stack's tunnel will drop.
    a real `WUD_ADMIN_PASSWORD` in Portainer. Deploy the separate
    [Home Assistant stack](homeassistant-deploy.md) so media changes no longer
    control its lifecycle.
-6. Deploy the Git-backed media stack with the name `media-stack`. Use the
-   temporary legacy-path Additional file while changing the application paths;
-   remove it after the transition. Stop using the old rsync deployment.
+6. Deploy the Git-backed media stack with the name `media-stack` using
+   `docker-compose.yml` only (plus the optional Jellyfin GPU override after
+   device checks). Keep downloads/imports paused until all application paths
+   point at the new `/data` layout. Do not use the old rsync deployment.
 7. Verify storage, VPN, [WUD](update-policy.md) and the checks below. Import
    the [corrected Radarr custom formats](radarr-custom-formats.md) separately.
    Enable polling only afterwards. In Prowlarr disable the
@@ -99,7 +100,7 @@ Newer versions may ask you to add/select a Git repository **Source** first.
 | Repository URL | `https://github.com/zndavid/docker-apps` |
 | Repository reference | `refs/heads/main` (or select `main` in the branch picker) |
 | Compose path | `docker-compose.yml` |
-| Additional paths | `docker-compose.legacy-paths.yml` during path transition, then remove; optional GPU file after device checks |
+| Additional paths | Empty by default; optional `docker-compose.jellyfin-gpu.yml` after device checks |
 | GitOps updates | Enable after verifying the initial deployment |
 | Mechanism | Polling |
 | Fetch interval | `5m` / 5 minutes |
@@ -129,7 +130,7 @@ In Portainer, confirm:
 - Jellyfin sees the migrated libraries at `/data/media/...`; Seerr is available.
 - Home Assistant is available from its independent `homeassistant-stack`.
 - The application-user hardlink probe passes and real Arr imports hardlink.
-- WUD login works and no automatic Docker update trigger remains configured.
+- WUD login works, the `docker.auto` trigger is active, and Gluetun/qBittorrent remain excluded from individual automatic updates.
 - LazyLibrarian and Calibre-Web Automated containers are absent.
 - The stack source remains Git and the environment values are retained.
 
