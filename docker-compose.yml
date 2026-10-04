@@ -170,40 +170,6 @@ services:
       start_period: 30s
     logging: *default-logging
 
-  lazylibrarian:
-    <<: *service-defaults
-    image: lscr.io/linuxserver/lazylibrarian:latest
-    container_name: lazylibrarian
-    environment: *common-env
-    depends_on:
-      prowlarr:
-        condition: service_healthy
-    volumes:
-      - /share/Config/lazylibrarian:/config
-      - /share/Downloads:/downloads
-      # LazyLibrarian keeps its own persistent library here.
-      - /share/Media/LazyLibrarian:/books
-      # Successful LL post-processing copies ebooks here for CWA to ingest.
-      - /share/Media/Calibre-Ingest:/cwa-ingest
-    ports:
-      - "5299:5299"
-    logging: *default-logging
-
-  calibre-web-automated:
-    <<: *service-defaults
-    image: crocodilestick/calibre-web-automated:latest
-    container_name: calibre-web-automated
-    environment: *common-env
-    volumes:
-      - /share/Config/calibre-web-automated:/config
-      # CWA removes files from this directory after successful ingest.
-      - /share/Media/Calibre-Ingest:/cwa-book-ingest
-      # CWA owns and maintains the Calibre library/database here.
-      - /share/Media/Books:/calibre-library
-    ports:
-      - "${CWA_WEBUI_PORT:-8083}:8083"
-    logging: *default-logging
-
   bazarr:
     <<: *service-defaults
     image: ghcr.io/linuxserver/bazarr:latest
