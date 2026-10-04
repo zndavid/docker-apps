@@ -3,12 +3,12 @@
   "includeCustomFormatWhenRenaming": false,
   "specifications": [
     {
-      "name": "Prefer HDR (optional)",
+      "name": "HDR present",
       "implementation": "ReleaseTitleSpecification",
       "negate": false,
-      "required": false,
+      "required": true,
       "fields": {
-        "value": "(?i)\\b(HDR|HDR10(?:\\+|P(?:lus)?)?|HDRPlus|HDR10\\+)\\b"
+        "value": "(?i)(?<![A-Za-z0-9])(?:HDR10(?:\\+|P(?:lus)?)?|HDRPlus|HDR)(?![A-Za-z0-9])"
       }
     },
     {
@@ -17,7 +17,7 @@
       "negate": true,
       "required": true,
       "fields": {
-        "value": "(?i)\\b(DV|DoVi|Dolby[ ._-]?Vision|DolbyVision)\\b(?!.*\\b(HDR|HDR10(?:\\+|P(?:lus)?)?|HDRPlus|HDR10\\+)\\b)"
+        "value": "(?i)^(?!.*(?<![A-Za-z0-9])(?:HDR10(?:\\+|P(?:lus)?)?|HDRPlus|HDR)(?![A-Za-z0-9])).*(?<![A-Za-z0-9])(?:DV|DoVi|Dolby[ ._-]?Vision)(?![A-Za-z0-9])"
       }
     },
     {
@@ -26,7 +26,7 @@
       "negate": true,
       "required": true,
       "fields": {
-        "value": "(?i)\\bSDR\\b"
+        "value": "(?i)(?<![A-Za-z0-9])SDR(?![A-Za-z0-9])"
       }
     },
     {
@@ -35,9 +35,8 @@
       "negate": true,
       "required": true,
       "fields": {
-        "value": "(?i)\\bHLG\\b"
+        "value": "(?i)(?<![A-Za-z0-9])HLG(?![A-Za-z0-9])"
       }
     }
   ]
 }
-
