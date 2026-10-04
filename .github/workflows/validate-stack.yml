@@ -1,0 +1,49 @@
+name: Validate stack
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate Compose using placeholder values
+        run: |
+          docker compose --env-file .env.example config --quiet
+          docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.jellyfin-gpu.yml config --quiet
+          docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.legacy-paths.yml config --quiet
+          docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.legacy-paths.yml -f docker-compose.jellyfin-gpu.yml config --quiet
+          docker compose --env-file .env.example -f docker-compose.homeassistant.yml config --quiet
+      - name: Check HDR and Dolby Vision regression cases
+        run: python3 .github/scripts/test-radarr-formats.py
+      - name: Check NAS helper syntax
+        run: sh -n scripts/check-hardlinks.sh
+      - name: Require coordinated VPN namespace changes
+        env:
+          VPN_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 .github/scripts/validate-vpn-revision.py
+      - name: Check the resolved recovery shell
+        shell: bash
+        run: |
+          docker compose --env-file .env.example config --format json > "$RUNNER_TEMP/media-stack.json"
+          python3 - "$RUNNER_TEMP/media-stack.json" <<'PY'
+          import json
+          import subprocess
+          import sys
+
+          with open(sys.argv[1]) as config_file:
+              config = json.load(config_file)
+          # Compose config serializes literal dollars escaped for reuse as Compose.
+          script = config["services"]["qbittorrent-recovery"]["entrypoint"][2].replace("$$", "$")
+          subprocess.run(["sh", "-n"], input=script, text=True, check=True)
+          PY

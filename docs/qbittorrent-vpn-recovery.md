@@ -23,9 +23,15 @@ If qBittorrent was deliberately stopped, the helper leaves it stopped.
 
 The helper has `network_mode: none`. It only receives read-only access to the Gluetun config directory and access to the Docker socket so it can inspect Gluetun and restart qBittorrent.
 
+The watcher shell is embedded in `docker-compose.yml` under the helper's `entrypoint`. There is no repository-relative script mount, build step, or custom image. Shell dollar signs are escaped as `$$` so Compose passes them through to the container.
+
+The Docker socket grants access to the host Docker API even with `network_mode: none`; keep the helper trusted.
+
 ## Deploy
 
-Sync the repository to the NAS, then from the stack directory run:
+For GitOps, follow [NAS deployment](nas-deploy.md) and let Portainer apply the Compose change. Check the helper logs in Portainer after deployment.
+
+For a local Compose deployment only, from the stack directory run:
 
 ```bash
 docker compose config --quiet
@@ -57,10 +63,10 @@ Confirm the marker exists:
 docker exec gluetun cat /gluetun/vpn-up.timestamp
 ```
 
-Confirm both services are running:
+Confirm all three containers are running (Portainer Containers or the NAS CLI):
 
 ```bash
-docker compose ps gluetun qbittorrent qbittorrent-recovery
+docker ps --filter name=gluetun --filter name=qbittorrent
 ```
 
 Do not grant the Docker socket to Gluetun itself. The restart capability remains isolated in the recovery helper.

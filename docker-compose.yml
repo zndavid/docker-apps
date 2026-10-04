@@ -1,5 +1,9 @@
 name: media-stack
 
+# Bump this whenever Gluetun's Compose configuration/image changes. CI enforces
+# it; the shared label makes Portainer recreate both namespace members.
+x-vpn-stack-revision: &vpn-stack-revision "1"
+
 x-common-env: &common-env
   TZ: ${TZ}
   PUID: ${PUID}
@@ -53,7 +57,8 @@ services:
     labels:
       # Keep the tightly-coupled VPN namespace pair out of automatic recreation.
       # WUD still watches and notifies about updates.
-      wud.trigger.exclude: docker.weekly
+      wud.trigger.exclude: docker.manual
+      io.github.zndavid.vpn-stack-revision: *vpn-stack-revision
     logging: *default-logging
 
   qbittorrent:
@@ -74,9 +79,14 @@ services:
       TORRENTING_PORT: ${QBITTORRENT_TORRENTING_PORT:-6881}
     volumes:
       - /share/Config/qbittorrent:/config
-      - /share/Downloads:/downloads
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}/torrents
+        target: /data/torrents
+        bind:
+          create_host_path: false
     labels:
-      wud.trigger.exclude: docker.weekly
+      wud.trigger.exclude: docker.manual
+      io.github.zndavid.vpn-stack-revision: *vpn-stack-revision
     stop_grace_period: 30s
     logging: *default-logging
 
@@ -105,8 +115,86 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /share/Config/gluetun:/gluetun:ro
-      - ./scripts/qbittorrent-vpn-recovery.sh:/usr/local/bin/qbittorrent-vpn-recovery.sh:ro
-    entrypoint: ["/bin/sh", "/usr/local/bin/qbittorrent-vpn-recovery.sh"]
+    # Inline shell avoids a repository-relative bind mount in Portainer CE.
+    # Escape shell dollars as $$ so Compose leaves them for /bin/sh.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+
+        MARKER_FILE="$${VPN_UP_MARKER_FILE:-/gluetun/vpn-up.timestamp}"
+        GLUETUN_CONTAINER="$${GLUETUN_CONTAINER:-gluetun}"
+        QBITTORRENT_CONTAINER="$${QBITTORRENT_CONTAINER:-qbittorrent}"
+        POLL_INTERVAL="$${POLL_INTERVAL:-5}"
+        RECOVERY_DELAY="$${RECOVERY_DELAY:-10}"
+        HEALTH_WAIT_TIMEOUT="$${HEALTH_WAIT_TIMEOUT:-120}"
+
+        log() {
+          printf '%s %s\n' "$$(date -Iseconds 2>/dev/null || date)" "$$*"
+        }
+
+        read_marker() {
+          if [ -r "$$MARKER_FILE" ]; then
+            cat "$$MARKER_FILE" 2>/dev/null || true
+          fi
+        }
+
+        gluetun_health() {
+          docker inspect \
+            --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+            "$$GLUETUN_CONTAINER" 2>/dev/null || true
+        }
+
+        qbittorrent_running() {
+          [ "$$(docker inspect --format '{{.State.Running}}' "$$QBITTORRENT_CONTAINER" 2>/dev/null || true)" = "true" ]
+        }
+
+        last_marker=""
+        log "Waiting for initial Gluetun VPN-up marker at $${MARKER_FILE}"
+
+        while [ -z "$$last_marker" ]; do
+          last_marker="$$(read_marker)"
+          if [ -z "$$last_marker" ]; then
+            sleep "$$POLL_INTERVAL"
+          fi
+        done
+
+        log "Recovery watcher armed; initial marker=$${last_marker}"
+
+        while :; do
+          current_marker="$$(read_marker)"
+
+          if [ -n "$$current_marker" ] && [ "$$current_marker" != "$$last_marker" ]; then
+            last_marker="$$current_marker"
+            log "Detected Gluetun VPN reconnect; waiting $${RECOVERY_DELAY}s before qBittorrent recovery"
+            sleep "$$RECOVERY_DELAY"
+
+            waited=0
+            while [ "$$(gluetun_health)" != "healthy" ] && [ "$$waited" -lt "$$HEALTH_WAIT_TIMEOUT" ]; do
+              sleep "$$POLL_INTERVAL"
+              waited=$$((waited + POLL_INTERVAL))
+            done
+
+            if [ "$$(gluetun_health)" != "healthy" ]; then
+              log "Gluetun did not become healthy within $${HEALTH_WAIT_TIMEOUT}s; qBittorrent restart skipped"
+              continue
+            fi
+
+            if qbittorrent_running; then
+              log "Restarting qBittorrent after VPN recovery"
+              if docker restart -t 30 "$$QBITTORRENT_CONTAINER" >/dev/null; then
+                log "qBittorrent restarted successfully"
+              else
+                log "qBittorrent restart failed"
+              fi
+            else
+              log "qBittorrent is not running; leaving it stopped"
+            fi
+          fi
+
+          sleep "$$POLL_INTERVAL"
+        done
     logging: *default-logging
 
   sonarr:
@@ -114,13 +202,13 @@ services:
     image: ghcr.io/linuxserver/sonarr:latest
     container_name: sonarr
     environment: *common-env
-    depends_on:
-      prowlarr:
-        condition: service_healthy
     volumes:
       - /share/Config/sonarr:/config
-      - /share/Media/Series:/tv
-      - /share/Downloads:/downloads
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}
+        target: /data
+        bind:
+          create_host_path: false
     ports:
       - "8989:8989"
     healthcheck:
@@ -136,13 +224,13 @@ services:
     image: ghcr.io/linuxserver/radarr:latest
     container_name: radarr
     environment: *common-env
-    depends_on:
-      prowlarr:
-        condition: service_healthy
     volumes:
       - /share/Config/radarr:/config
-      - /share/Media/Movies:/movies
-      - /share/Downloads:/downloads
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}
+        target: /data
+        bind:
+          create_host_path: false
     ports:
       - "7878:7878"
     healthcheck:
@@ -170,54 +258,18 @@ services:
       start_period: 30s
     logging: *default-logging
 
-  lazylibrarian:
-    <<: *service-defaults
-    image: lscr.io/linuxserver/lazylibrarian:latest
-    container_name: lazylibrarian
-    environment: *common-env
-    depends_on:
-      prowlarr:
-        condition: service_healthy
-    volumes:
-      - /share/Config/lazylibrarian:/config
-      - /share/Downloads:/downloads
-      # LazyLibrarian keeps its own persistent library here.
-      - /share/Media/LazyLibrarian:/books
-      # Successful LL post-processing copies ebooks here for CWA to ingest.
-      - /share/Media/Calibre-Ingest:/cwa-ingest
-    ports:
-      - "5299:5299"
-    logging: *default-logging
-
-  calibre-web-automated:
-    <<: *service-defaults
-    image: crocodilestick/calibre-web-automated:latest
-    container_name: calibre-web-automated
-    environment: *common-env
-    volumes:
-      - /share/Config/calibre-web-automated:/config
-      # CWA removes files from this directory after successful ingest.
-      - /share/Media/Calibre-Ingest:/cwa-book-ingest
-      # CWA owns and maintains the Calibre library/database here.
-      - /share/Media/Books:/calibre-library
-    ports:
-      - "${CWA_WEBUI_PORT:-8083}:8083"
-    logging: *default-logging
-
   bazarr:
     <<: *service-defaults
     image: ghcr.io/linuxserver/bazarr:latest
     container_name: bazarr
     environment: *common-env
-    depends_on:
-      sonarr:
-        condition: service_healthy
-      radarr:
-        condition: service_healthy
     volumes:
       - /share/Config/bazarr:/config
-      - /share/Media/Movies:/movies
-      - /share/Media/Series:/tv
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}/media
+        target: /data/media
+        bind:
+          create_host_path: false
     ports:
       - "6767:6767"
     healthcheck:
@@ -235,8 +287,12 @@ services:
     environment: *common-env
     volumes:
       - /share/Config/jellyfin:/config
-      - /share/Media/Series:/data/tvshows:ro
-      - /share/Media/Movies:/data/movies:ro
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}/media
+        target: /data/media
+        read_only: true
+        bind:
+          create_host_path: false
     ports:
       - "8096:8096"
     healthcheck:
@@ -254,9 +310,6 @@ services:
     container_name: seerr
     environment:
       TZ: ${TZ}
-    depends_on:
-      jellyfin:
-        condition: service_healthy
     volumes:
       - /share/Config/seerr:/app/config
     ports:
@@ -279,11 +332,10 @@ services:
     read_only: true
     logging: *default-logging
 
-  # Weekly automatic updater. Remote image checks only run Sunday around noon.
-  # Startup/event-triggered scans are disabled so updates cannot happen at night
-  # just because the NAS or WUD container restarted.
+  # Weekly image checks and Telegram notifications; updates require a manual
+  # Docker trigger in WUD. Startup/event scans remain disabled.
   wud:
-    image: getwud/wud:8.3.0
+    image: getwud/wud:9.2.1
     container_name: wud
     restart: unless-stopped
     networks:
@@ -294,12 +346,15 @@ services:
       TZ: ${TZ}
       WUD_WATCHER_LOCAL_SOCKET: /var/run/docker.sock
       WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "true"
+      WUD_WATCHER_LOCAL_WATCHDIGESTDEFAULT: "true"
       WUD_WATCHER_LOCAL_CRON: "0 12 * * 0"
       WUD_WATCHER_LOCAL_JITTER: 60000
       WUD_WATCHER_LOCAL_WATCHATSTART: "false"
       WUD_WATCHER_LOCAL_WATCHEVENTS: "false"
-      WUD_TRIGGER_DOCKER_WEEKLY_AUTO: "true"
-      WUD_TRIGGER_DOCKER_WEEKLY_PRUNE: "true"
+      WUD_AUTH_ADMIN_USER: ${WUD_ADMIN_USER:-admin}
+      WUD_AUTH_ADMIN_PASSWORD: ${WUD_ADMIN_PASSWORD:?Set a private WUD_ADMIN_PASSWORD in Portainer}
+      WUD_TRIGGER_DOCKER_MANUAL_AUTO: "false"
+      WUD_TRIGGER_DOCKER_MANUAL_PRUNE: "false"
       WUD_TRIGGER_TELEGRAM_UPDATES_AUTO: "true"
       WUD_TRIGGER_TELEGRAM_UPDATES_BOTTOKEN: ${TELEGRAM_BOT_TOKEN}
       WUD_TRIGGER_TELEGRAM_UPDATES_CHATID: ${TELEGRAM_CHAT_ID}
@@ -309,25 +364,8 @@ services:
     ports:
       - "${WUD_WEBUI_PORT:-13000}:3000"
     labels:
-      # WUD updates the rest of the stack but is upgraded deliberately.
+      # WUD itself is upgraded deliberately through Git/Portainer.
       wud.watch: "false"
-    logging: *default-logging
-
-  homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:stable
-    container_name: homeassistant
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - /share/Config/homeassistant:/config
-      - /etc/localtime:/etc/localtime:ro
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
     logging: *default-logging
 
 networks:

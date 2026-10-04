@@ -1,90 +1,99 @@
 # Container update policy
 
-This stack uses **What's up Docker (WUD)** for controlled automatic updates.
+WUD is pinned to **9.2.1**. It checks for image updates on Sundays at 12:00 in
+`Europe/Vienna`, with up to one minute of jitter. Startup/event scans remain
+disabled. The scheduled flow is:
 
-## Schedule
+1. Scan for new images.
+2. Send Telegram update notifications.
+3. Apply a chosen update manually after reviewing its release notes/backups.
 
-WUD checks for new container images once per week:
+The Docker trigger is named `docker.manual` and has `AUTO=false`, `PRUNE=false`.
+No scheduled trigger recreates containers or prunes rollback images.
 
-- Sunday
-- 12:00 local time
-- `Europe/Vienna`
-- with up to about one minute of jitter
+## WUD v9 migration and authentication
 
-The watcher cron is:
+Back up `/share/Config/wud` before upgrading. WUD v9 uses a SQLite store and
+migrates legacy Loki data; the backup is needed for a genuine v8 rollback.
+Keep the same `/store` bind mount. Set private `WUD_ADMIN_USER` and
+`WUD_ADMIN_PASSWORD` in Portainer before deployment. Compose has no password fallback; `.env.example` contains a validation
+placeholder that must be replaced before deployment.
 
-```text
-0 12 * * 0
-```
+The `WUD_AUTH_ADMIN_*` variables bootstrap admin access, and users/passwords
+persist in the database. Verify authentication after deployment and check the
+Triggers screen shows the manual Docker trigger, not an old automatic updater.
+The UI is at the configured `WUD_WEBUI_PORT` (default `13000`) on the NAS LAN.
 
-Startup checks and Docker-event-triggered scans are disabled deliberately. This prevents a NAS/container restart in the evening or at night from causing an unscheduled automatic update.
+## Choose how to apply an update
 
-## What WUD does
+For an independent media service with a mutable tag such as `latest`, WUD's
+manual Docker trigger can pull/recreate that selected container. It changes the
+running image, not the Compose definition. For explicit version tags or digests,
+update the Git reference instead so a future Portainer redeploy does not revert
+the intended version. WUD itself is excluded from self-updates and is upgraded
+through Git/Portainer deliberately.
 
-When WUD finds an eligible update during the Sunday scan, its Docker trigger automatically:
+Portainer GitOps applies **Compose configuration changes**. Keep **Re-pull image**
+and **Force redeployment** off for normal polling; a merge still deploys deliberate
+image-reference changes. WUD handles discovery and selected manual image updates.
+Do not run an independent local Compose project alongside the Portainer stacks.
 
-1. pulls the new image,
-2. stops the existing container,
-3. recreates it with the existing Docker configuration,
-4. starts it again if it was previously running,
-5. removes the previous image after a successful replacement.
+## Gluetun + qBittorrent must be updated together
 
-A Telegram trigger is configured in parallel using:
+Both are excluded from `docker.manual`, but still watched for notifications.
+For **Git changes to Gluetun**, bump `x-vpn-stack-revision` in Compose. The shared
+revision label changes both service configurations so Portainer recreates both
+containers. CI compares Gluetun against the PR base/previous main commit and
+rejects a Gluetun change without a revision bump. Require the Validate stack
+check in GitHub branch protection before relying on unattended polling; polling
+does not wait for CI. Runtime-variable changes are not visible to that Git
+comparison: disable polling and recreate both containers together when changing
+VPN credentials/countries/ports in Portainer, rather than updating only Gluetun.
 
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
+qBittorrent shares Gluetun's network namespace. Recreating only Gluetun can leave
+qBittorrent attached to the old namespace; do not apply individual WUD updates
+or individual Portainer container recreation for this pair.
 
-The WUD Web UI is published on the NAS at `WUD_WEBUI_PORT` (default `13000`) for LAN access, for example `http://192.168.178.78:13000`.
-
-## Update scope
-
-Most running services are watched and automatically updated on the weekly schedule.
-
-WUD itself is excluded from self-updates and should be upgraded deliberately.
-
-### Gluetun + qBittorrent exception
-
-`gluetun` and `qbittorrent` are the primary torrent stack. They are watched, but excluded from the automatic Docker trigger.
-
-qBittorrent uses:
-
-```text
-network_mode: service:gluetun
-```
-
-so the two containers share one network namespace. Recreating Gluetun independently could leave a running qBittorrent container attached to the old namespace. For that reason WUD may notify about updates for these two containers, but they should be upgraded together:
-
-```bash
-docker compose pull gluetun qbittorrent
-docker compose up -d --force-recreate gluetun qbittorrent
-```
-
-After updating the pair, confirm Gluetun is healthy and verify the VPN exit IP before relying on qBittorrent again.
-
-## Registry choice
-
-LinuxServer images use their official public GitHub Container Registry references:
-
-```text
-ghcr.io/linuxserver/...
-```
-
-Public GHCR images can be checked without adding a separate registry credential to WUD, keeping the updater configuration simpler.
-
-## Docker socket note
-
-WUD must have write-capable access to `/var/run/docker.sock` because automatic container replacement requires Docker API mutations. Treat the WUD container as highly privileged infrastructure and do not expose the Docker socket over the network.
-
-## Manual update / recovery
-
-A full manual refresh can be performed from the stack directory:
+For targeted CLI maintenance of a Portainer-managed stack, use the same project
+name (`media-stack`), the exact Git Compose revision and Additional paths used by
+Portainer, and your private environment file. Do not use the stale pre-migration
+checkout. Stop polling during maintenance and back up the configurations, then:
 
 ```bash
-docker compose pull
-docker compose up -d --remove-orphans
-docker compose ps
+docker compose -p media-stack --env-file /path/to/private.env pull gluetun qbittorrent
+docker compose -p media-stack --env-file /path/to/private.env up -d --no-deps --force-recreate gluetun qbittorrent
 ```
 
-Because qBittorrent shares Gluetun's network namespace, if either of those two services is specifically recreated or upgraded, recreate the pair together and verify VPN egress afterwards.
+If you use the GPU override, pass the same `-f` files as the deployed stack. The
+`--no-deps` invocation explicitly names both members and prevents unrelated
+service recreation. This is targeted maintenance of the same project, not a
+second deployment source; do not use it to change the Compose configuration.
 
-Before major application changes, keep backups of the corresponding `/share/Config/<service>` directories. If an upstream release causes a regression, pin or restore the previous known-good image and recreate the affected service.
+Afterwards verify both services, compare namespaces and check VPN egress:
+
+```bash
+docker inspect qbittorrent --format '{{.HostConfig.NetworkMode}}'
+docker inspect gluetun --format '{{.Id}}'
+```
+
+The qBittorrent `container:<ID>` value must refer to the current Gluetun container.
+Follow [VPN egress verification](qbittorrent-gluetun.md#verify-vpn-egress), check
+recovery logs, then re-enable polling. A full Portainer image refresh is broader
+and does not replace checking that the pair was recreated together.
+
+## Home Assistant, backups and Docker access
+
+[Home Assistant](homeassistant-deploy.md) is a separate stack and excluded from
+the media WUD Docker trigger. Update it deliberately through its own stack.
+
+Before application upgrades, back up their config directories. `PRUNE=false`
+retains old images, but does not undo database migrations or provide a full
+rollback. Pin/restore a known-good image and compatible config backup if needed.
+
+WUD's manual Docker updates require the Docker socket. That access is powerful;
+a read-only filesystem mount of the socket would not restrict Docker API
+operations. Keep WUD authenticated and on your trusted admin network.
+
+- [WUD 9.2.1 release](https://github.com/getwud/wud/releases/tag/9.2.1)
+- [WUD authentication](https://getwud.app/docs/configuration/authentications/)
+- [Manual trigger setting](https://getwud.app/docs/configuration/triggers/)

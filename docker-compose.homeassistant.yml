@@ -1,0 +1,27 @@
+name: homeassistant-stack
+
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - /share/Config/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      # The media-stack WUD watcher can notify, but HA is updated separately.
+      wud.trigger.exclude: docker.manual
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+

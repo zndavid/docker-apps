@@ -1,0 +1,8 @@
+# Optional override. Add in Portainer only after checking /dev/dri on the NAS.
+# Do not deploy this file as a separate stack.
+services:
+  jellyfin:
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      LIBVA_DRIVER_NAME: ${JELLYFIN_LIBVA_DRIVER_NAME:-i965}
