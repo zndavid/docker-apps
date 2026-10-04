@@ -5,7 +5,7 @@ Bazarr and qBittorrent behind Gluetun, with Cloudflare Tunnel and WUD.
 Home Assistant is managed separately with `docker-compose.homeassistant.yml`.
 
 Configuration deploys from GitHub through **Portainer GitOps polling**. Image
-checks run weekly in WUD; container updates require a deliberate manual action.
+checks run weekly in WUD; eligible containers are updated automatically after detection.
 There is no GitHub-to-NAS SSH access, webhook, NAS Actions runner, custom image
 build or repository-relative bind mount. Actions only validates configuration
 and regression cases; it has no NAS or runtime-secret access.
@@ -43,5 +43,5 @@ docker compose --env-file .env.example -f docker-compose.homeassistant.yml confi
 python3 .github/scripts/test-radarr-formats.py
 ```
 
-The CI also validates optional GPU and temporary legacy-path overrides. These
-checks do not verify the NAS filesystem, driver or real runtime credentials.
+The CI also validates the optional Jellyfin GPU override. These checks do not
+verify the NAS filesystem, driver or real runtime credentials.
