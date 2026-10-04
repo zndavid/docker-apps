@@ -11,8 +11,10 @@ The scheduled flow is:
 3. Automatically recreate eligible containers with the detected image.
 4. Keep the previous image locally for rollback because pruning is disabled.
 
-The automatic Docker trigger is named `docker.auto` and is enabled globally with
-`WUD_TRIGGER_DOCKER_AUTO_AUTO=true`. Digest changes for mutable tags such as
+The automatic Docker trigger is named `docker.auto`. It executes automatically
+with `WUD_TRIGGER_DOCKER_AUTO_AUTO=true` and is associated with containers by
+default via `WUD_TRIGGER_DOCKER_AUTO_INCLUDEBYDEFAULT=true`. Digest changes for
+mutable tags such as
 `latest` are watched, so services can update even when the tag name itself does
 not change.
 
