@@ -33,7 +33,7 @@ Telegram or WUD credentials. You can later move this separate project to the
 mini-PC with a verified Home Assistant backup.
 
 WUD on the same NAS can still detect the container and send notifications, but
-`docker.manual` is excluded for Home Assistant. Apply HA image updates through
+`docker.auto` is excluded for Home Assistant. Apply HA image updates through
 its own stack's **Pull and redeploy** or an explicit image change in Git, after
 making a backup. Both Git stacks share the repository, so an unrelated commit
 can cause Portainer to check both definitions; with force redeployment off, an
