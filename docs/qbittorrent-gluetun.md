@@ -103,10 +103,10 @@ NordVPN does not provide inbound port forwarding. Therefore the Compose file int
 ## Update policy
 
 WUD checks images and sends notifications on Sundays around 12:00
-Europe/Vienna time; independent media container updates are manual.
+Europe/Vienna time; eligible independent media containers update automatically.
 
 The `gluetun` and `qbittorrent` containers are deliberately excluded from WUD's automatic Docker trigger because qBittorrent shares Gluetun's network namespace. Recreating only Gluetun could leave an already-running qBittorrent attached to the old namespace.
 
 WUD can still watch these containers and send Telegram update notifications. Upgrade the pair together using the project/revision-aware maintenance
-procedure in [update policy](update-policy.md#gluetun--qbittorrent-must-be-updated-together).
+procedure in [update policy](update-policy.md#gluetun--qbittorrent-stay-coordinated).
 Afterwards verify both containers, their shared namespace and VPN egress.
