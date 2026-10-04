@@ -81,6 +81,13 @@ Use the qBittorrent WebUI username/password configured in qBittorrent. Keep dist
 
 Sonarr and Radarr no longer depend on a Transmission container during startup. If Gluetun or qBittorrent is temporarily unavailable, the Arr applications remain available and simply report the download client as unavailable until the VPN stack recovers.
 
+## Storage paths
+
+qBittorrent and Arr agree on `/data/torrents/...`; Radarr/Sonarr import into
+`/data/media/...` through one shared mount. Follow
+[storage migration](storage-migration.md) for existing torrent locations,
+categories, library roots and temporary legacy aliases before enabling imports.
+
 ## Download cleanup
 
 The previous repository script that configured Transmission-specific seeding and cleanup has been removed. Torrent seeding limits and completed-download removal should now be configured in qBittorrent and the Arr applications themselves.
@@ -95,15 +102,11 @@ NordVPN does not provide inbound port forwarding. Therefore the Compose file int
 
 ## Update policy
 
-WUD performs normal automatic image updates on Sundays around 12:00 Europe/Vienna time.
+WUD checks images and sends notifications on Sundays around 12:00
+Europe/Vienna time; independent media container updates are manual.
 
-The `gluetun` and `qbittorrent` containers are deliberately excluded from WUD's automatic Docker trigger because qBittorrent shares Gluetun's network namespace. Recreating only Gluetun could leave an already-running qBittorrent attached to the old namespace.
+The `gluetun` and `qbittorrent` containers are deliberately excluded from WUD's manual Docker trigger because qBittorrent shares Gluetun's network namespace. Recreating only Gluetun could leave an already-running qBittorrent attached to the old namespace.
 
-WUD can still watch these containers and send Telegram update notifications. Upgrade the pair together:
-
-```bash
-docker compose pull gluetun qbittorrent
-docker compose up -d --force-recreate gluetun qbittorrent
-```
-
-Afterwards verify both containers and confirm VPN egress again.
+WUD can still watch these containers and send Telegram update notifications. Upgrade the pair together using the project/revision-aware maintenance
+procedure in [update policy](update-policy.md#gluetun--qbittorrent-must-be-updated-together).
+Afterwards verify both containers, their shared namespace and VPN egress.

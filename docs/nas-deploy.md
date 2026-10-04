@@ -17,7 +17,9 @@ needs to be committed or mounted. Keep the original `.env` and a Portainer
 backup in a private location. For default WireGuard deployment, supply:
 
 - `TZ`, `PUID`, `PGID`
+- `MEDIA_STACK_DATA_ROOT` after [storage migration](storage-migration.md)
 - `GLUETUN_WIREGUARD_PRIVATE_KEY`
+- `WUD_ADMIN_USER`, `WUD_ADMIN_PASSWORD` for mandatory WUD v9 authentication
 - `CLOUDFLARE_TUNNEL_TOKEN`
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 
@@ -25,19 +27,23 @@ The other settings/defaults are documented in `.env.example`. If using
 OpenVPN, set `GLUETUN_VPN_TYPE=openvpn` and supply NordVPN service credentials
 in `NORDVPN_USER` and `NORDVPN_PASS`.
 
-All application data keeps its existing absolute `/share/Config/...`,
-`/share/Media/...` and `/share/Downloads` paths. The recovery shell is embedded
-in Compose, so **Enable relative path volumes** is unnecessary. No custom
-recovery image or NAS-side build is required.
+Application configs keep their existing `/share/Config/...` paths. Media and
+downloads move to the shared root in [storage migration](storage-migration.md).
+Complete that migration before normal deployment. The recovery shell is
+embedded in Compose, so **Enable relative path volumes** is unnecessary. No
+custom recovery image or NAS-side build is required.
 
 ## One-time migration
 
-Expect a short outage, including Home Assistant and Cloudflare Tunnel,
-which currently belong to the same project. Work over the NAS LAN; a
-connection through the stack's tunnel will drop.
+Expect an outage while handing over the old stack and migrating storage;
+the duration depends on whether files can be hardlinked or need copying.
+The old project includes Home Assistant and Cloudflare Tunnel. Work over the
+NAS LAN; a connection through the stack's tunnel will drop.
 
-1. Merge the reviewed changes into `main`. Back up the current NAS Compose
-   file, `.env`, Portainer data and application configurations. Keep the
+1. Leave polling disabled until migration is verified. Back up the current
+   NAS Compose file, `.env`, Portainer data and application configurations,
+   including WUD before its v9 database migration. Merge the reviewed changes
+   into `main` only with deployment under this maintenance procedure. Keep the
    **old Compose file including the ebook services** until migration succeeds
    so it can remove the old book containers and support rollback.
 2. Check existing ownership before stopping anything:
@@ -64,9 +70,17 @@ connection through the stack's tunnel will drop.
    directories. This removes old containers/network, including LazyLibrarian
    and Calibre-Web Automated, while retaining their bind-mounted data.
    Stopping containers alone does not release their fixed names.
-5. Deploy the Git-backed stack in Portainer with the name `media-stack`.
-   Stop using the old rsync/Compose deployment alongside it.
-6. Verify the checks below, then enable polling. In Prowlarr disable the
+5. With the old containers stopped, prepare the shared data tree using
+   [storage migration](storage-migration.md). Set `MEDIA_STACK_DATA_ROOT` and
+   a real `WUD_ADMIN_PASSWORD` in Portainer. Deploy the separate
+   [Home Assistant stack](homeassistant-deploy.md) so media changes no longer
+   control its lifecycle.
+6. Deploy the Git-backed media stack with the name `media-stack`. Use the
+   temporary legacy-path Additional file while changing the application paths;
+   remove it after the transition. Stop using the old rsync deployment.
+7. Verify storage, VPN, [WUD](update-policy.md) and the checks below. Import
+   the [corrected Radarr custom formats](radarr-custom-formats.md) separately.
+   Enable polling only afterwards. In Prowlarr disable the
    existing LazyLibrarian application entry if present. In qBittorrent pause
    unwanted book downloads without deleting files.
 
@@ -85,7 +99,7 @@ Newer versions may ask you to add/select a Git repository **Source** first.
 | Repository URL | `https://github.com/zndavid/docker-apps` |
 | Repository reference | `refs/heads/main` (or select `main` in the branch picker) |
 | Compose path | `docker-compose.yml` |
-| Additional paths | Empty |
+| Additional paths | `docker-compose.legacy-paths.yml` during path transition, then remove; optional GPU file after device checks |
 | GitOps updates | Enable after verifying the initial deployment |
 | Mechanism | Polling |
 | Fetch interval | `5m` / 5 minutes |
@@ -102,7 +116,8 @@ Portainer compares the branch commit hash. A changed commit triggers stack
 processing even for documentation-only changes; with force redeployment off,
 unchanged services ordinarily stay running. Re-pull off avoids deliberately
 refreshing every floating image on each configuration deployment. Missing
-images still need to be downloaded. WUD's image policy remains separate.
+images still need to be downloaded. WUD scans and sends notifications; its
+Docker updater now requires manual execution. See [update policy](update-policy.md).
 
 ## Verify deployment
 
@@ -111,7 +126,10 @@ In Portainer, confirm:
 - Gluetun is healthy and qBittorrent runs in its network namespace.
 - `qbittorrent-recovery` logs say `Recovery watcher armed`.
 - Sonarr/Radarr can reach qBittorrent at `gluetun:18080` (or your configured port).
-- Jellyfin sees the existing libraries; Seerr and Home Assistant are available.
+- Jellyfin sees the migrated libraries at `/data/media/...`; Seerr is available.
+- Home Assistant is available from its independent `homeassistant-stack`.
+- The application-user hardlink probe passes and real Arr imports hardlink.
+- WUD login works and no automatic Docker update trigger remains configured.
 - LazyLibrarian and Calibre-Web Automated containers are absent.
 - The stack source remains Git and the environment values are retained.
 
@@ -126,17 +144,25 @@ into `main`. Polling operates independently of CI; it does not wait for a failed
 check on a commit already in `main`. Branch protection requiring that check can
 be configured separately in GitHub.
 
-After merging, check Portainer's stack status and container logs. For Gluetun
-changes, verify qBittorrent was also recreated into the current namespace and
-verify VPN egress. Follow [update policy](update-policy.md) for image updates.
+Before merging any Gluetun configuration/image change, bump the shared
+`x-vpn-stack-revision` so both VPN namespace members change configuration. CI
+rejects an unchanged revision on a Gluetun diff. Require that check in branch
+protection before unattended polling; direct main commits can otherwise deploy
+before CI finishes. VPN environment changes made directly in Portainer require
+coordinated manual recreation of both containers with polling disabled.
+
+After deployment, check Portainer's status, both container namespaces and VPN
+egress. Follow [update policy](update-policy.md) for image updates.
 
 For configuration rollback, revert the offending commit via a reviewed PR and
 let polling apply it, or use **Pull and redeploy** after the revert. This does
 not restore mutable image tags or undo database migrations; pin known-good
 images and restore compatible config backups when necessary.
 
-If the initial migration fails, remove the partially created Git-backed stack
-before starting the saved old Compose configuration. Keep one owner at a time.
+If migration fails, remove both partially created Git stacks before starting
+the saved old Compose definition, which also owns Home Assistant. Restore
+pre-migration app configs/WUD backups if paths or databases changed. Old data
+must still be present for that rollback. Keep one owner at a time.
 
 ## References
 

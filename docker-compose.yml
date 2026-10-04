@@ -1,5 +1,9 @@
 name: media-stack
 
+# Bump this whenever Gluetun's Compose configuration/image changes. CI enforces
+# it; the shared label makes Portainer recreate both namespace members.
+x-vpn-stack-revision: &vpn-stack-revision "1"
+
 x-common-env: &common-env
   TZ: ${TZ}
   PUID: ${PUID}
@@ -53,7 +57,8 @@ services:
     labels:
       # Keep the tightly-coupled VPN namespace pair out of automatic recreation.
       # WUD still watches and notifies about updates.
-      wud.trigger.exclude: docker.weekly
+      wud.trigger.exclude: docker.manual
+      io.github.zndavid.vpn-stack-revision: *vpn-stack-revision
     logging: *default-logging
 
   qbittorrent:
@@ -74,9 +79,14 @@ services:
       TORRENTING_PORT: ${QBITTORRENT_TORRENTING_PORT:-6881}
     volumes:
       - /share/Config/qbittorrent:/config
-      - /share/Downloads:/downloads
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}/torrents
+        target: /data/torrents
+        bind:
+          create_host_path: false
     labels:
-      wud.trigger.exclude: docker.weekly
+      wud.trigger.exclude: docker.manual
+      io.github.zndavid.vpn-stack-revision: *vpn-stack-revision
     stop_grace_period: 30s
     logging: *default-logging
 
@@ -192,13 +202,13 @@ services:
     image: ghcr.io/linuxserver/sonarr:latest
     container_name: sonarr
     environment: *common-env
-    depends_on:
-      prowlarr:
-        condition: service_healthy
     volumes:
       - /share/Config/sonarr:/config
-      - /share/Media/Series:/tv
-      - /share/Downloads:/downloads
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}
+        target: /data
+        bind:
+          create_host_path: false
     ports:
       - "8989:8989"
     healthcheck:
@@ -214,13 +224,13 @@ services:
     image: ghcr.io/linuxserver/radarr:latest
     container_name: radarr
     environment: *common-env
-    depends_on:
-      prowlarr:
-        condition: service_healthy
     volumes:
       - /share/Config/radarr:/config
-      - /share/Media/Movies:/movies
-      - /share/Downloads:/downloads
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}
+        target: /data
+        bind:
+          create_host_path: false
     ports:
       - "7878:7878"
     healthcheck:
@@ -253,15 +263,13 @@ services:
     image: ghcr.io/linuxserver/bazarr:latest
     container_name: bazarr
     environment: *common-env
-    depends_on:
-      sonarr:
-        condition: service_healthy
-      radarr:
-        condition: service_healthy
     volumes:
       - /share/Config/bazarr:/config
-      - /share/Media/Movies:/movies
-      - /share/Media/Series:/tv
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}/media
+        target: /data/media
+        bind:
+          create_host_path: false
     ports:
       - "6767:6767"
     healthcheck:
@@ -279,8 +287,12 @@ services:
     environment: *common-env
     volumes:
       - /share/Config/jellyfin:/config
-      - /share/Media/Series:/data/tvshows:ro
-      - /share/Media/Movies:/data/movies:ro
+      - type: bind
+        source: ${MEDIA_STACK_DATA_ROOT:?Set MEDIA_STACK_DATA_ROOT after storage migration}/media
+        target: /data/media
+        read_only: true
+        bind:
+          create_host_path: false
     ports:
       - "8096:8096"
     healthcheck:
@@ -298,9 +310,6 @@ services:
     container_name: seerr
     environment:
       TZ: ${TZ}
-    depends_on:
-      jellyfin:
-        condition: service_healthy
     volumes:
       - /share/Config/seerr:/app/config
     ports:
@@ -323,11 +332,10 @@ services:
     read_only: true
     logging: *default-logging
 
-  # Weekly automatic updater. Remote image checks only run Sunday around noon.
-  # Startup/event-triggered scans are disabled so updates cannot happen at night
-  # just because the NAS or WUD container restarted.
+  # Weekly image checks and Telegram notifications; updates require a manual
+  # Docker trigger in WUD. Startup/event scans remain disabled.
   wud:
-    image: getwud/wud:8.3.0
+    image: getwud/wud:9.2.1
     container_name: wud
     restart: unless-stopped
     networks:
@@ -338,12 +346,15 @@ services:
       TZ: ${TZ}
       WUD_WATCHER_LOCAL_SOCKET: /var/run/docker.sock
       WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "true"
+      WUD_WATCHER_LOCAL_WATCHDIGESTDEFAULT: "true"
       WUD_WATCHER_LOCAL_CRON: "0 12 * * 0"
       WUD_WATCHER_LOCAL_JITTER: 60000
       WUD_WATCHER_LOCAL_WATCHATSTART: "false"
       WUD_WATCHER_LOCAL_WATCHEVENTS: "false"
-      WUD_TRIGGER_DOCKER_WEEKLY_AUTO: "true"
-      WUD_TRIGGER_DOCKER_WEEKLY_PRUNE: "true"
+      WUD_AUTH_ADMIN_USER: ${WUD_ADMIN_USER:-admin}
+      WUD_AUTH_ADMIN_PASSWORD: ${WUD_ADMIN_PASSWORD:?Set a private WUD_ADMIN_PASSWORD in Portainer}
+      WUD_TRIGGER_DOCKER_MANUAL_AUTO: "false"
+      WUD_TRIGGER_DOCKER_MANUAL_PRUNE: "false"
       WUD_TRIGGER_TELEGRAM_UPDATES_AUTO: "true"
       WUD_TRIGGER_TELEGRAM_UPDATES_BOTTOKEN: ${TELEGRAM_BOT_TOKEN}
       WUD_TRIGGER_TELEGRAM_UPDATES_CHATID: ${TELEGRAM_CHAT_ID}
@@ -353,25 +364,8 @@ services:
     ports:
       - "${WUD_WEBUI_PORT:-13000}:3000"
     labels:
-      # WUD updates the rest of the stack but is upgraded deliberately.
+      # WUD itself is upgraded deliberately through Git/Portainer.
       wud.watch: "false"
-    logging: *default-logging
-
-  homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:stable
-    container_name: homeassistant
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - /share/Config/homeassistant:/config
-      - /etc/localtime:/etc/localtime:ro
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
     logging: *default-logging
 
 networks:
