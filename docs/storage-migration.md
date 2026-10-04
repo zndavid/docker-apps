@@ -84,21 +84,20 @@ until the new tree is complete.
 
 ## Update application paths in a controlled transition
 
-For the first deployment, add `docker-compose.legacy-paths.yml` to Portainer's
-**Additional paths**. This temporary override exposes the old container paths
-as aliases into the **new** data tree. It lets existing configs see their files
-while you change paths; imports through old aliases still lack the desired
-single-mount behavior. Keep automatic imports/downloads paused during this stage.
+Deploy the new Git-backed stack only after the new data tree is populated, with
+qBittorrent downloads and Arr automatic imports still paused. There is no
+legacy-path compatibility overlay: old container paths can be temporarily
+unavailable until each application's settings are changed. Do not resume
+automation until every path below has been verified.
 
 1. qBittorrent: update the default save path to `/data/torrents`, the incomplete
    path if enabled, and all category save paths. For example, the existing
    `radarr` and `sonarr` categories can point to `/data/torrents/movies` and
-   `/data/torrents/tv`. Preserve each existing torrent's relative location;
-   change `/downloads/...` to `/data/torrents/...` using **Set location**. The
-   temporary aliases point to the same data; verify one paused torrent first,
-   then recheck after relocation. Do not start a second download of the data.
+   `/data/torrents/tv`. Preserve each torrent's relative location; change
+   `/downloads/...` to `/data/torrents/...` using **Set location** and force a
+   recheck before resuming it.
 2. Radarr: add `/data/media/movies` as a root folder. Select movies in the movie
-   editor and change their root to it, choosing **not to move files** because
+   editor and change their root to it, choosing **not to move files** because the
    migration already populated the destination. Remove the old root after
    verifying paths. Sonarr: do the equivalent with `/data/media/tv`.
 3. Remove obsolete Remote Path Mappings for this local qBittorrent client;
@@ -108,11 +107,10 @@ single-mount behavior. Keep automatic imports/downloads paused during this stage
    `/movies` or `/tv` path mappings; paths should match `/data/media/...`.
 5. Jellyfin: update existing library folders from `/data/movies` and
    `/data/tvshows` to `/data/media/movies` and `/data/media/tv`, then scan the
-   libraries. Keep the original library definitions and verify metadata/watch
-   status using the config backup if necessary.
-6. Remove `docker-compose.legacy-paths.yml` from Additional paths and redeploy.
-   Confirm no old container paths remain in app settings, existing torrent
-   locations, library roots or mappings before resuming automation.
+   libraries. Verify metadata/watch status using the config backup if necessary.
+6. Confirm no old container paths remain in application settings, torrent
+   locations, library roots or mappings, then resume downloads/imports and
+   enable GitOps polling.
 
 ## Verify hardlinks as the application user
 
