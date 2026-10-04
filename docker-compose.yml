@@ -2,7 +2,7 @@ name: media-stack
 
 # Bump this whenever Gluetun's Compose configuration/image changes. CI enforces
 # it; the shared label makes Portainer recreate both namespace members.
-x-vpn-stack-revision: &vpn-stack-revision "1"
+x-vpn-stack-revision: &vpn-stack-revision "2"
 
 x-common-env: &common-env
   TZ: ${TZ}
