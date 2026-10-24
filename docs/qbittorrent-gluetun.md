@@ -102,7 +102,7 @@ NordVPN does not provide inbound port forwarding. Therefore the Compose file int
 
 ## Update policy
 
-WUD checks images and sends notifications on Sundays around 12:00
+WUD checks images and sends notifications on Sundays around 04:23
 Europe/Vienna time; eligible independent media containers update automatically.
 
 The `gluetun` and `qbittorrent` containers are deliberately excluded from WUD's automatic Docker trigger because qBittorrent shares Gluetun's network namespace. Recreating only Gluetun could leave an already-running qBittorrent attached to the old namespace.
