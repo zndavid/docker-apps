@@ -1,8 +1,13 @@
 # Container update policy
 
-WUD is pinned to **9.2.1** and scans for image updates on Sundays at 12:00 in
-`Europe/Vienna`, with up to one minute of jitter. Startup/event scans remain
-disabled.
+WUD is pinned to **9.5.0** and scans for image updates on Sundays at 04:23 in
+`Europe/Vienna`, with up to one minute of jitter. Startup scans remain disabled.
+Docker events are enabled so container replacements are tracked between scheduled
+scans instead of retaining obsolete container IDs.
+
+Version 9.5.0 queues Docker-trigger image pulls per registry and retries
+rate-limited pulls. This addresses the `429`/`toomanyrequests` failures seen in
+the update logs. See the [release notes](https://github.com/getwud/wud/releases/tag/9.5.0).
 
 The scheduled flow is:
 
